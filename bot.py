@@ -1,44 +1,29 @@
+import os
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+
+# Get bot token from Railway Environment Variable
+TOKEN = os.getenv("BOT_TOKEN")
+
+# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+    await update.message.reply_text("Hello! ✅ Bot is running successfully on Railway.")
 
-    # Handle both "/start v=1" and "/start?v=1"
-    query = None
-    if context.args:  # Case: /start v=1
-        query = context.args[0]
-    elif update.message.text and "?v=" in update.message.text:  # Case: /start?v=1
-        query = update.message.text.split("?")[1]  # "v=1"
+# Echo command (replies with whatever you send)
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(update.message.text)
 
-    if not query or not query.startswith("v="):
-        await update.message.reply_text("Usage: /start v=1")
-        return
+def main():
+    app = Application.builder().token(TOKEN).build()
 
-    vid_id = query.split("=")[1]
-    msg_id = VIDEO_MAP.get(vid_id)
+    # Commands
+    app.add_handler(CommandHandler("start", start))
 
-    if not msg_id:
-        await update.message.reply_text("❌ Video not found.")
-        return
+    # Messages
+    app.add_handler(CommandHandler("echo", echo))
 
-    # Check if user is in channel
-    try:
-        member = await context.bot.get_chat_member(CHANNEL_ID, user.id)
-        if member.status in ["left", "kicked"]:
-            join_link = f"https://t.me/{str(CHANNEL_ID)[4:]}"  
-            await update.message.reply_text(
-                f"🚨 Please join the channel first:\n👉 {join_link}"
-            )
-            return
-    except Forbidden:
-        await update.message.reply_text("⚠️ Bot is not admin in the channel. Please fix that.")
-        return
+    print("✅ Bot started...")
+    app.run_polling()
 
-    # Forward the video
-    try:
-        await context.bot.forward_message(
-            chat_id=update.effective_chat.id,
-            from_chat_id=CHANNEL_ID,
-            message_id=msg_id
-        )
-    except Exception as e:
-        logger.error(f"Error forwarding message: {e}")
-        await update.message.reply_text("⚠️ Could not forward the video.")
+if __name__ == "__main__":
+    main()
