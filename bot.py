@@ -3,14 +3,22 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
-# Channel IDs
-CHANNEL_JOIN_ID = -1002877068674      # jisme user ko join karna hai (@parishram_2025_1_0)
-CHANNEL_FORWARD_ID = -1002573368807   # jisme se video forward karna hai (bot admin hona chahiye)
+CHANNEL_ID = -1002877068674   # Join check ke liye channel
+SOURCE_CHANNEL_ID = -1002066954690  # Jaha se video forward hoga
 
-# ---------------- Commands ----------------
+# /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
+    text = update.message.text.strip()
     video_id = None
+
+    if text == "/start":
+        await update.message.reply_text(
+            "👉 Go to https://mission-catalyst.blogspot.com\n"
+            "Select your class, subject, chapter, and lecture.\n"
+            "Then click on *Watch Lecture* and then send me that lecture id like `/start 302`",
+            parse_mode="Markdown"
+        )
+        return
 
     if "?v=" in text:
         video_id = text.split("?v=")[-1].strip()
@@ -18,79 +26,75 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video_id = text.split(" ", 1)[-1].strip()
 
     if not video_id:
-        await update.message.reply_text(
-            "❌ No video id provided.\nUsage: /start 302  or  /start?v=302"
-        )
+        await update.message.reply_text("❌ No video id provided.\nUsage: /start 302 or /start?v=302")
         return
 
     context.user_data["video_id"] = video_id
 
-    # Pehle blogspot ka msg bhejo
-    msg = (
-        "👉 Go to https://mission-catalyst.blogspot.com\n"
-        "Select your class, subject, chapter, and lecture.\n"
-        "Then click on *Watch Lecture* and I will share the lecture."
-    )
-
-    # Join button
     keyboard = [
-        [InlineKeyboardButton("📢 Join Channel", url="https://t.me/parishram_2025_1_0")],
+        [InlineKeyboardButton("📢 Join Telegram Channel", url="https://t.me/parishram_2025_1_0")],
+        [InlineKeyboardButton("🔔 Subscribe YouTube", url="https://www.youtube.com/@missioncatalyst")],
         [InlineKeyboardButton("✅ Joined", callback_data="joined")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "⚠️ Please join our *Telegram channel* and *Subscribe YouTube channel* first to get the lecture.",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-    await update.message.reply_text(msg, reply_markup=reply_markup)
 
-
-# ---------------- Step 1: Joined ----------------
+# Handle Joined button
 async def joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    video_id = context.user_data.get("video_id")
+
+    if not video_id:
+        await query.edit_message_text("❌ No video id found. Please use /start 302 again.")
+        return
 
     try:
-        member = await context.bot.get_chat_member(CHANNEL_JOIN_ID, user_id)
+        member = await context.bot.get_chat_member(CHANNEL_ID, user_id)
         if member.status in ["member", "administrator", "creator"]:
-            # Send YouTube subscribe step
             keyboard = [
-                [InlineKeyboardButton("▶️ Subscribe YouTube", url="https://www.youtube.com/@missioncatalyst")],
+                [InlineKeyboardButton("🔔 Subscribe YouTube", url="https://www.youtube.com/@missioncatalyst")],
                 [InlineKeyboardButton("✅ Subscribed", callback_data="subscribed")]
             ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(
-                "✅ Channel joined!\n\nNow please subscribe to our YouTube channel:",
-                reply_markup=reply_markup
+                "✅ You joined the Telegram channel!\n\n❌ But you are not subscribed to YouTube.\n\n"
+                "👉 Please subscribe and then click *Subscribed*.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            await query.edit_message_text("⚠️ Please join the channel first: @parishram_2025_1_0")
-    except Exception as e:
-        await query.edit_message_text(f"❌ Error checking channel membership: {e}")
+            await query.edit_message_text("❌ You have not joined the Telegram channel yet.")
+    except:
+        await query.edit_message_text("❌ Error checking channel membership.")
 
 
-# ---------------- Step 2: Subscribed ----------------
+# Handle Subscribed button
 async def subscribed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = query.from_user.id
     video_id = context.user_data.get("video_id")
 
     if not video_id:
-        await query.edit_message_text("❌ Invalid or missing video ID. Please try again with /start?v=302")
+        await query.edit_message_text("❌ No video id found. Please use /start 302 again.")
         return
 
     try:
+        # Dusre channel se forward karega
         await context.bot.forward_message(
             chat_id=user_id,
-            from_chat_id=CHANNEL_FORWARD_ID,
-            message_id=int(video_id)   # yahi important line hai
+            from_chat_id=SOURCE_CHANNEL_ID,   # yaha se video aayega
+            message_id=int(video_id)
         )
-        await query.edit_message_text("🎉 Here is your lecture 👇")
+        await query.edit_message_text("✅ Here is your lecture:")
     except Exception as e:
-        await query.edit_message_text(f"⚠️ Error forwarding video: {e}")
+        await query.edit_message_text(f"❌ Post not found\nPost ID: {video_id}\nError: {e}")
 
 
-# ---------------- Run Bot ----------------
 if __name__ == "__main__":
     app = Application.builder().token(TOKEN).build()
 
@@ -98,5 +102,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(joined_callback, pattern="joined"))
     app.add_handler(CallbackQueryHandler(subscribed_callback, pattern="subscribed"))
 
-    print("🤖 Bot is running...")
+    print("Bot is running...")
     app.run_polling()
