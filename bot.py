@@ -1,15 +1,19 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-import datetime
+from datetime import datetime
 
 TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
-# store user last served date + video_id
-user_data = {}
+# user की last join prompt दिखाने की तारीख store करने के लिए dict
+user_last_prompt = {}
+
+# Channel link
+CHANNEL_LINK = "https://t.me/parishram_2026_1_0"
+
 
 # Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text  # full message e.g. "/start?v=302"
+    text = update.message.text
     video_id = None
 
     if "?v=" in text:
@@ -18,37 +22,47 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         video_id = text.split(" ", 1)[-1].strip()
 
     if not video_id:
-        await update.message.reply_text("❌ No video id provided.\nUsage: /start 302  or  /start?v=302")
+        await update.message.reply_text(
+            "❌ No video id provided.\nUsage: /start 302  or  /start?v=302"
+        )
         return
 
     user_id = update.effective_user.id
-    today = datetime.date.today()
+    today = datetime.now().date()
 
-    # Check if already served today
-    if user_id in user_data and user_data[user_id]["date"] == today:
-        await update.message.reply_text(
-            f"🎬 Here is your requested video link again:\n👉 https://example.com/video/{user_data[user_id]['video_id']}"
-        )
-        return
+    # Check अगर आज का join message पहले show नहीं हुआ
+    if user_id not in user_last_prompt or user_last_prompt[user_id] != today:
+        # पहली बार आज join message show करो
+        user_last_prompt[user_id] = today
+        await send_join_message(update, video_id)
+    else:
+        # उसी दिन दुबारा request → direct link भेजो
+        await send_video_link(update, video_id)
 
-    # Directly send video link
-    await send_video_link(update, video_id, user_id)
+
+# Send join message
+async def send_join_message(update: Update, video_id: str):
+    keyboard = [
+        [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
+        [InlineKeyboardButton("✅ Joined", callback_data=f"joined:{video_id}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "⚠️ Please join the channel first.", reply_markup=reply_markup
+    )
 
 
-# Send video link + store data
-async def send_video_link(update_or_query, video_id: str, user_id: int):
-    today = datetime.date.today()
-    user_data[user_id] = {"date": today, "video_id": video_id}
+# Send video link
+async def send_video_link(update_or_query, video_id: str):
+    link = f"https://example.com/video/{video_id}"
 
-    # If it's from query button
-    if hasattr(update_or_query, "edit_message_text"):
-        await update_or_query.edit_message_text(
-            f"✅ Here is your requested link:\n👉 https://example.com/video/{video_id}"
+    if isinstance(update_or_query, Update):
+        await update_or_query.message.reply_text(
+            f"✅ Here is your requested link:\n👉 {link}"
         )
     else:
-        # Normal /start msg
-        await update_or_query.message.reply_text(
-            f"✅ Here is your requested link:\n👉 https://example.com/video/{video_id}"
+        await update_or_query.edit_message_text(
+            f"✅ Here is your requested link:\n👉 {link}"
         )
 
 
@@ -57,17 +71,17 @@ async def joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    user_id = query.from_user.id
-    video_id = query.data.split("_")[1]
-
-    await send_video_link(query, video_id, user_id)
+    data = query.data
+    if data.startswith("joined:"):
+        video_id = data.split("joined:")[-1]
+        await send_video_link(query, video_id)
 
 
 if __name__ == "__main__":
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(joined_callback, pattern="^joined_"))
+    app.add_handler(CallbackQueryHandler(joined_callback, pattern="joined:"))
 
-    print("✅ Bot is running...")
+    print("Bot is running...")
     app.run_polling()
