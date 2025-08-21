@@ -2,11 +2,11 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # Bot ka token
-TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
+TOKEN = "8347661235:AAHmS5A6o7sMxpVB8KXs1N8jA_g2e3-Vogg"
 
 # Channel IDs / usernames
 CHANNEL_ID = -1002877068674           # Join check ke liye channel (private ID)
-SOURCE_CHANNEL = "@biologylectures1_0"  # Yaha se video forward hoga (username use ho raha hai)
+SOURCE_CHANNEL = "@missioncatalystbotcontents"  # Yaha se video forward hoga (username use ho raha hai)
 
 # /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
