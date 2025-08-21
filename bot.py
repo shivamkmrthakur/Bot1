@@ -1,34 +1,19 @@
-import logging
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# Logging enable kar dete hain (debugging ke liye)
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-
-# Token (apna token yaha daalo)
-TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
-
-# Start command
-def start(update, context):
-    update.message.reply_text("Hello! ✅ Bot is running 24/7 on Railway 🚀")
-
-# Echo message
-def echo(update, context):
-    update.message.reply_text(update.message.text)
+# /start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Bot is running successfully!")
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+    # Create Application
+    app = Application.builder().token("8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ").build()
 
-    # Handlers
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
+    # Add command handler
+    app.add_handler(CommandHandler("start", start))
 
-    # Start polling
-    updater.start_polling()
-    updater.idle()
+    # Run bot
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
