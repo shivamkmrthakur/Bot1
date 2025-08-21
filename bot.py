@@ -1,12 +1,14 @@
-import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 
-# Your channel username and URL
+# --- Your Bot Token (from BotFather) ---
+BOT_TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
+
+# --- Your channel username and URL ---
 CHANNEL_USERNAME = "parishram_2026_1_0"
 CHANNEL_URL = "https://t.me/parishram_2026_1_0"
 
-# Store videos here
+# --- Store videos directly here ---
 VIDEO_LINKS = {
     "302": "https://example.com/video302.mp4",
     "303": "https://example.com/video303.mp4",
@@ -59,7 +61,6 @@ def joined_callback(update: Update, context: CallbackContext):
         query.edit_message_text(f"You are still not in the channel! Join here: {CHANNEL_URL}")
 
 def main():
-    BOT_TOKEN = os.getenv("8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ")  # Load token from Railway Environment
     updater = Updater(BOT_TOKEN, use_context=True)
     dp = updater.dispatcher
 
