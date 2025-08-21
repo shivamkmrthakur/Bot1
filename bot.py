@@ -1,9 +1,11 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
+# Bot ka token
 TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
-CHANNEL_ID = -1002877068674   # Join check ke liye channel
+# Channel IDs
+CHANNEL_ID = -1002877068674       # Join check ke liye channel
 SOURCE_CHANNEL_ID = -1002066954690  # Jaha se video forward hoga
 
 # /start command
@@ -11,26 +13,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     video_id = None
 
+    # Agar sirf /start bheja gaya
     if text == "/start":
         await update.message.reply_text(
             "👉 Go to https://mission-catalyst.blogspot.com\n"
             "Select your class, subject, chapter, and lecture.\n"
-            "Then click on *Watch Lecture* and then send me that lecture id like `/start 302`",
+            "Then click on *Watch Lecture* and send me that lecture id like:\n\n"
+            "`/start 302`\n\n"
+            "⚠️ Example: Agar video ka message ID 104 hai to aap likhen `/start 104`",
             parse_mode="Markdown"
         )
         return
 
+    # Agar ?v= style id bheja ho
     if "?v=" in text:
         video_id = text.split("?v=")[-1].strip()
+    # Agar space ke sath id bheja ho (/start 104)
     elif " " in text:
         video_id = text.split(" ", 1)[-1].strip()
 
-    if not video_id:
-        await update.message.reply_text("❌ No video id provided.\nUsage: /start 302 or /start?v=302")
+    # Agar id nahi mili
+    if not video_id or not video_id.isdigit():
+        await update.message.reply_text(
+            "❌ Invalid video id.\nUsage: `/start 302`\n\n⚠️ Example: `/start 104`",
+            parse_mode="Markdown"
+        )
         return
 
+    # Save user video id
     context.user_data["video_id"] = video_id
 
+    # Ask to join channel + subscribe
     keyboard = [
         [InlineKeyboardButton("📢 Join Telegram Channel", url="https://t.me/parishram_2025_1_0")],
         [InlineKeyboardButton("🔔 Subscribe YouTube", url="https://www.youtube.com/@missioncatalyst")],
@@ -84,10 +97,10 @@ async def subscribed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     try:
-        # Dusre channel se forward karega
+        # Forward from source channel
         await context.bot.forward_message(
             chat_id=user_id,
-            from_chat_id=SOURCE_CHANNEL_ID,   # yaha se video aayega
+            from_chat_id=SOURCE_CHANNEL_ID,
             message_id=int(video_id)
         )
         await query.edit_message_text("✅ Here is your lecture:")
