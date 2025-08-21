@@ -4,7 +4,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
 # Channel IDs
-CHANNEL_JOIN_ID = --1002877068674      # jisme user ko join karna hai (@parishram_2025_1_0)
+CHANNEL_JOIN_ID = -1002877068674      # jisme user ko join karna hai (@parishram_2025_1_0)
 CHANNEL_FORWARD_ID = -1002573368807   # jisme se video forward karna hai (bot admin hona chahiye)
 
 # ---------------- Commands ----------------
