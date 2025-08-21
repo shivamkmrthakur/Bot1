@@ -4,7 +4,7 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, Callback
 import requests
 
 # Your bot token
-BOT_TOKEN = "PUT_YOUR_NEW_TOKEN_HERE"
+BOT_TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
 # Your channel username (without https://t.me/)
 CHANNEL_USERNAME = "parishram_2026_1_0"
