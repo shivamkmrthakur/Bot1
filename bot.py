@@ -5,7 +5,7 @@ from datetime import datetime
 TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
 # Links
-CHANNEL_ID = -1002573368807   # apna channel ka numeric ID (yeh zaroori hai)
+CHANNEL_ID = -1002877068674   # apna channel ka numeric ID (yeh zaroori hai)
 CHANNEL_LINK = "https://t.me/parishram_2025_1_0"
 YOUTUBE_LINK = "https://www.youtube.com/@missioncatalyst"
 BLOG_LINK = "https://mission-catalyst.blogspot.com"
