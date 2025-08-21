@@ -1,69 +1,73 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+import datetime
 
-# 🔑 Bot Token
-BOT_TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
+TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
-# 📢 Channel username (without https://t.me/)
-CHANNEL_USERNAME = "@parishram_2026_1_0"
+# store user last served date + video_id
+user_data = {}
 
-# 🟢 Check if user is member of channel
-async def is_member(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    try:
-        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except Exception as e:
-        print(f"Membership check error: {e}")
-        return False
-
-# 🟢 Start command
+# Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    # Video ID निकालना
+    text = update.message.text  # full message e.g. "/start?v=302"
     video_id = None
-    if context.args:  # /start 302
-        video_id = context.args[0]
-    elif update.message.text and "?v=" in update.message.text:  # /start?v=302
-        video_id = update.message.text.split("?v=")[-1]
+
+    if "?v=" in text:
+        video_id = text.split("?v=")[-1].strip()
+    elif " " in text:
+        video_id = text.split(" ", 1)[-1].strip()
 
     if not video_id:
-        await update.message.reply_text("❌ No video id provided.\nUsage: `/start 302` or `/start?v=302`", parse_mode="Markdown")
+        await update.message.reply_text("❌ No video id provided.\nUsage: /start 302  or  /start?v=302")
         return
 
-    # Membership check
-    if await is_member(user_id, context):
-        await update.message.reply_text(f"🎬 Here is your requested video link:\n👉 https://example.com/video/{video_id}")
-    else:
-        keyboard = [
-            [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME.replace('@', '')}")],
-            [InlineKeyboardButton("✅ Joined", callback_data=f"joined_{video_id}")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("⚠️ Please join our channel first to access the video.", reply_markup=reply_markup)
+    user_id = update.effective_user.id
+    today = datetime.date.today()
 
-# 🟢 Handle "Joined ✅" button
-async def joined(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check if already served today
+    if user_id in user_data and user_data[user_id]["date"] == today:
+        await update.message.reply_text(
+            f"🎬 Here is your requested video link again:\n👉 https://example.com/video/{user_data[user_id]['video_id']}"
+        )
+        return
+
+    # Directly send video link
+    await send_video_link(update, video_id, user_id)
+
+
+# Send video link + store data
+async def send_video_link(update_or_query, video_id: str, user_id: int):
+    today = datetime.date.today()
+    user_data[user_id] = {"date": today, "video_id": video_id}
+
+    # If it's from query button
+    if hasattr(update_or_query, "edit_message_text"):
+        await update_or_query.edit_message_text(
+            f"✅ Here is your requested link:\n👉 https://example.com/video/{video_id}"
+        )
+    else:
+        # Normal /start msg
+        await update_or_query.message.reply_text(
+            f"✅ Here is your requested link:\n👉 https://example.com/video/{video_id}"
+        )
+
+
+# Handle "Joined" button
+async def joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     user_id = query.from_user.id
     video_id = query.data.split("_")[1]
 
-    if await is_member(user_id, context):
-        await query.edit_message_text(f"🎬 Thanks for joining!\nHere is your video link:\n👉 https://example.com/video/{video_id}")
-    else:
-        await query.answer("❌ You are not a member yet!", show_alert=True)
+    await send_video_link(query, video_id, user_id)
 
-# 🟢 Main Function
-def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(joined, pattern="^joined_"))
-
-    print("✅ Bot started...")
-    app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(joined_callback, pattern="^joined_"))
+
+    print("✅ Bot is running...")
+    app.run_polling()
