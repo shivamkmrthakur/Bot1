@@ -4,16 +4,15 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # Bot ka token
 TOKEN = "8125551108:AAFej9_9y9JieML31sjXEYFs217TddX3wmQ"
 
-# Channel IDs
-CHANNEL_ID = -1002877068674       # Join check ke liye channel
-SOURCE_CHANNEL_ID = -1002066954690  # Jaha se video forward hoga
+# Channel IDs / usernames
+CHANNEL_ID = -1002877068674           # Join check ke liye channel (private ID)
+SOURCE_CHANNEL = "@biologylectures1_0"  # Yaha se video forward hoga (username use ho raha hai)
 
 # /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     video_id = None
 
-    # Agar sirf /start bheja gaya
     if text == "/start":
         await update.message.reply_text(
             "👉 Go to https://mission-catalyst.blogspot.com\n"
@@ -25,14 +24,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Agar ?v= style id bheja ho
     if "?v=" in text:
         video_id = text.split("?v=")[-1].strip()
-    # Agar space ke sath id bheja ho (/start 104)
     elif " " in text:
         video_id = text.split(" ", 1)[-1].strip()
 
-    # Agar id nahi mili
     if not video_id or not video_id.isdigit():
         await update.message.reply_text(
             "❌ Invalid video id.\nUsage: `/start 302`\n\n⚠️ Example: `/start 104`",
@@ -40,10 +36,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Save user video id
     context.user_data["video_id"] = video_id
 
-    # Ask to join channel + subscribe
     keyboard = [
         [InlineKeyboardButton("📢 Join Telegram Channel", url="https://t.me/parishram_2025_1_0")],
         [InlineKeyboardButton("🔔 Subscribe YouTube", url="https://www.youtube.com/@missioncatalyst")],
@@ -97,10 +91,10 @@ async def subscribed_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     try:
-        # Forward from source channel
+        # Forward from source channel (username se)
         await context.bot.forward_message(
             chat_id=user_id,
-            from_chat_id=SOURCE_CHANNEL_ID,
+            from_chat_id=SOURCE_CHANNEL,   # yaha username use ho raha hai
             message_id=int(video_id)
         )
         await query.edit_message_text("✅ Here is your lecture:")
