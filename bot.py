@@ -6,14 +6,18 @@ CHANNEL_ID = "-1002573368807"  # apna channel id
 
 # Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
+    text = update.message.text  # full message e.g. "/start?v=302"
+    video_id = None
 
-    if not args:
-        await update.message.reply_text("❌ No video id provided.\nUsage: /start 302 or /start?v=302")
+    if "?v=" in text:
+        video_id = text.split("?v=")[-1].strip()
+    elif " " in text:
+        video_id = text.split(" ", 1)[-1].strip()
+
+    if not video_id:
+        await update.message.reply_text("❌ No video id provided.\nUsage: /start 302  or  /start?v=302")
         return
 
-    # handle both /start 302 and /start?v=302
-    video_id = args[0].replace("v=", "")
     user_id = update.effective_user.id
 
     # Check membership
@@ -48,7 +52,7 @@ async def joined_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         member = await context.bot.get_chat_member(CHANNEL_ID, user_id)
         if member.status in ["member", "administrator", "creator"]:
-            await query.edit_message_text("✅ Thanks for joining!\nNow send /start 302 again to get your link.")
+            await query.edit_message_text("✅ Thanks for joining!\nNow send /start?v=302 again to get your link.")
         else:
             await query.edit_message_text("❌ You have not joined the channel yet.")
     except:
