@@ -10,13 +10,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ----------------- CONFIG -----------------
-TOKEN = "8409312798:AAF9aVNMdSynS5ndEOiyKe8Bc2NDe3dNk1I"
+TOKEN = "YOUR_BOT_TOKEN"
 SOURCE_CHANNEL = "@botdatabase1"
 VERIFY_FILE = "verified_users.json"
 
 # Secret key (must match client-side)
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
-
 SIG_LEN = 12
 # ------------------------------------------
 
@@ -60,53 +59,50 @@ def validate_code_anyuser(code: str) -> bool:
     expected = hmac.new(SECRET_KEY, msg, hashlib.sha256).hexdigest()[:SIG_LEN]
     return hmac.compare_digest(expected, sig)
 
-async def send_verify_buttons(update: Update, note: str = None):
-    keyboard = [
-        [InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html")],
-        [InlineKeyboardButton("ℹ️ How to Verify", url="https://your-site.com/howto.html")]
-    ]
-    text = "⚠️ Please verify first using the verification link on our website."
-    if note:
-        text = note + "\n\n" + text
-    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
+# ---------------- HANDLERS ----------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
+    username = update.effective_user.first_name or "User"
 
+    # ---- If only "/start" (no video id) ----
     if text == "/start":
-        keyboard = [[InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html")]]
-        await update.message.reply_text(
-            "👉 Usage:\n"
-            "`/start <video_id>` — request a lecture (bot will forward if you are verified)\n\n"
-            "Or verify first by visiting our website and then returning to the bot.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        if is_verified(user_id):
+            # Already verified -> Show channel instruction
+            await update.message.reply_text(
+                "👉 Go to my channel and click on the video you watch. After that I will send you the video."
+            )
+        else:
+            # Not verified -> Show greeting + verify button
+            keyboard = [[InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html")]]
+            await update.message.reply_text(
+                f"👋 Hello {username}!\n\n"
+                "Welcome to the bot.\n\n"
+                "Please verify yourself first to access lectures.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         return
 
+    # ---- If "/start <something>" ----
     if " " in text:
         payload = text.split(" ", 1)[1].strip()
     else:
         payload = text[len("/start"):].strip()
 
+    # verification payload
     if payload.startswith("verified="):
         code = payload.replace("verified=", "", 1).strip()
         if validate_code_anyuser(code):
             set_verified(user_id)
-            video_id = context.user_data.get("video_id")
-            if video_id:
-                try:
-                    await context.bot.forward_message(chat_id=user_id, from_chat_id=SOURCE_CHANNEL, message_id=int(video_id))
-                    await update.message.reply_text("✅ Verified — and here is your lecture.")
-                except Exception as e:
-                    await update.message.reply_text(f"✅ Verified for 24h, but error sending lecture: {e}")
-            else:
-                await update.message.reply_text("✅ Verified for 24 hours! Now send `/start <video_id>` to get your lecture.", parse_mode="Markdown")
+            await update.message.reply_text(
+                "✅ Verified for 24 hours! Now send `/start <video_id>` to get your lecture.",
+                parse_mode="Markdown"
+            )
         else:
-            await update.message.reply_text("❌ Invalid or expired verification code. Please get a new code from the website.")
+            await update.message.reply_text("❌ Invalid or expired verification code.")
         return
 
+    # if user sends /start <video_id>
     if payload.isdigit():
         video_id = payload
         context.user_data["video_id"] = video_id
@@ -117,9 +113,15 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 await update.message.reply_text(f"❌ Error forwarding video. Details: {e}")
         else:
-            await send_verify_buttons(update, note="🔒 You are not verified yet.")
+            # Not verified -> Send verify button again
+            keyboard = [[InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html")]]
+            await update.message.reply_text(
+                "🔒 You are not verified yet.\n\n"
+                "Please verify yourself first to get videos.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
     else:
-        await update.message.reply_text("❌ Invalid command. Use `/start <video_id>` or verify via website.", parse_mode="Markdown")
+        await update.message.reply_text("❌ Invalid command. Use `/start <video_id>`.", parse_mode="Markdown")
 
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -137,17 +139,11 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if validate_code_anyuser(code):
         set_verified(user_id)
-        video_id = context.user_data.get("video_id")
-        if video_id:
-            try:
-                await context.bot.forward_message(chat_id=user_id, from_chat_id=SOURCE_CHANNEL, message_id=int(video_id))
-                await update.message.reply_text("✅ Verified — and here is your lecture.")
-            except Exception as e:
-                await update.message.reply_text(f"✅ Verified for 24h, but error sending lecture: {e}")
-        else:
-            await update.message.reply_text("✅ Verified for 24 hours! Now send `/start <video_id>` to get your lecture.")
+        await update.message.reply_text(
+            "✅ Verified for 24 hours! Now send `/start <video_id>` to get your lecture."
+        )
     else:
-        await update.message.reply_text("❌ Invalid or expired verification code. Please generate a fresh code from the website.")
+        await update.message.reply_text("❌ Invalid or expired verification code.")
 
 def main():
     app = Application.builder().token(TOKEN).build()
