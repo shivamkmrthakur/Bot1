@@ -73,12 +73,17 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "👉 Go to my channel and click on the video you watch. After that I will send you the video."
             )
         else:
-            # Not verified -> Show greeting + verify button
-            keyboard = [[InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html")]]
+            # Not verified -> Show greeting + verify + how-to-verify buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html"),
+                    InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
+                ]
+            ]
             await update.message.reply_text(
                 f"👋 Hello {username}!\n\n"
-                "Welcome to the bot.\n\n"
-                "Please verify yourself first to access lectures.",
+                "Welcome to the InstaHub bot.\n\n"
+                "Please verify yourself first to access video for 24 h",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         return
@@ -95,7 +100,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if validate_code_anyuser(code):
             set_verified(user_id)
             await update.message.reply_text(
-                "✅ Verified for 24 hours! Now send `/start <video_id>` to get your lecture.",
+                "✅ Verified for 24 hours! Now Go to my cheneal and waatch the video you want.",
                 parse_mode="Markdown"
             )
         else:
@@ -109,19 +114,24 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_verified(user_id):
             try:
                 await context.bot.forward_message(chat_id=user_id, from_chat_id=SOURCE_CHANNEL, message_id=int(video_id))
-                await update.message.reply_text("✅ Here is your lecture.")
+                await update.message.reply_text("✅ Here is your video")
             except Exception as e:
                 await update.message.reply_text(f"❌ Error forwarding video. Details: {e}")
         else:
-            # Not verified -> Send verify button again
-            keyboard = [[InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html")]]
+            # Not verified -> Send verify + how-to-verify button again
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Verify (open site)", url="https://your-site.com/verify.html"),
+                    InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
+                ]
+            ]
             await update.message.reply_text(
                 "🔒 You are not verified yet.\n\n"
                 "Please verify yourself first to get videos.",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
     else:
-        await update.message.reply_text("❌ Invalid command. Use `/start <video_id>`.", parse_mode="Markdown")
+        await update.message.reply_text("❌ Invalid command. Go to my cheneal and then watch you video.", parse_mode="Markdown")
 
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -140,7 +150,7 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if validate_code_anyuser(code):
         set_verified(user_id)
         await update.message.reply_text(
-            "✅ Verified for 24 hours! Now send `/start <video_id>` to get your lecture."
+            "✅ Verified for 24 hours! Now you recive you requested video for next 24 hours Enjoy"
         )
     else:
         await update.message.reply_text("❌ Invalid or expired verification code.")
