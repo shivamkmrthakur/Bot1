@@ -76,7 +76,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Not verified -> Show greeting + verify + how-to-verify buttons
             keyboard = [
                 [
-                    InlineKeyboardButton("✅ Verify (open site)", url="https://insta-hub.netlify.app/?verification=877643gggb37"),
+                    InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
                     InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
                 ]
             ]
@@ -121,7 +121,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Not verified -> Send verify + how-to-verify button again
             keyboard = [
                 [
-                    InlineKeyboardButton("✅ Verify (open site)", url="https://insta-hub.netlify.app/?verification=877643gggb37"),
+                    InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
                     InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
                 ]
             ]
