@@ -10,7 +10,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ----------------- CONFIG -----------------
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "8409312798:AAF9aVNMdSynS5ndEOiyKe8Bc2NDe3dNk1I"
 SOURCE_CHANNEL = "@botdatabase1"
 VERIFY_FILE = "verified_users.json"
 
