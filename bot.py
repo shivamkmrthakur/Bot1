@@ -131,7 +131,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
     else:
-        await update.message.reply_text("❌ Invalid command. Go to my cheneal and then watch you video.", parse_mode="Markdown")
+        await update.message.reply_text("❌ Invalid command. Go to my cheneal and then watch you videos.", parse_mode="Markdown")
 
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
