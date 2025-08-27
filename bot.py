@@ -7,7 +7,7 @@ import time
 import hmac
 import hashlib
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # ----------------- CONFIG -----------------
 TOKEN = "8409312798:AAF9aVNMdSynS5ndEOiyKe8Bc2NDe3dNk1I"
@@ -15,7 +15,6 @@ SOURCE_CHANNEL = "@botdatabase1"   # jaha se video forward hoga
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]  # required channels
 
 VERIFY_FILE = "verified_users.json"
-
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 SIG_LEN = 12
 # ------------------------------------------
@@ -80,7 +79,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---- If only "/start" (no video id) ----
     if text == "/start":
-        # Step 1: Check if joined required channels
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
             keyboard.append([InlineKeyboardButton("🔄 Try Again", callback_data="check_join")])
@@ -92,18 +90,17 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Step 2: If already verified
         if is_verified(user_id):
             await update.message.reply_text(
                 "👉 Go to my channel and click on the video you want. After that I will send you the video."
             )
         else:
-            # Not verified -> Show greeting + verify + how-to-verify buttons
             keyboard = [
                 [
                     InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
                     InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
-                ]
+                ],
+                [InlineKeyboardButton("🚫 Remove Ads (One Click)", callback_data="remove_ads")]
             ]
             await update.message.reply_text(
                 f"👋 Hello {username}!\n\n"
@@ -157,7 +154,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [
                     InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
                     InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
-                ]
+                ],
+                [InlineKeyboardButton("🚫 Remove Ads (One Click)", callback_data="remove_ads")]
             ]
             await update.message.reply_text(
                 "🔒 You are not verified yet.\n\n"
@@ -167,9 +165,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Invalid command. Go to my channel and then watch your videos.", parse_mode="Markdown")
 
-# ---------------- CALLBACK HANDLER ----------------
-from telegram.ext import CallbackQueryHandler
-
+# ---------------- CALLBACK HANDLERS ----------------
 async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -187,7 +183,6 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     else:
-        # Already joined, now show verify step
         if is_verified(user_id):
             await query.edit_message_text(
                 "👉 Go to my channel and click on the video you want. After that I will send you the video."
@@ -197,7 +192,8 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [
                     InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
                     InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
-                ]
+                ],
+                [InlineKeyboardButton("🚫 Remove Ads (One Click)", callback_data="remove_ads")]
             ]
             await query.edit_message_text(
                 f"👋 Hello {username}!\n\n"
@@ -205,6 +201,59 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "Please verify yourself first to access video for 24 h",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
+
+async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    text = (
+        f"👋 Hey {username}\n\n"
+        "🎖️ Available Plans :\n\n"
+        "● 30 rs For 7 Days Prime Membership\n\n"
+        "● 110 rs For 1 Month Prime Membership\n\n"
+        "● 299 rs For 3 Months Prime Membership\n\n"
+        "● 550 rs For 6 Months Prime Membership\n\n"
+        "● 999 rs For 1 Year Prime Membership\n\n"
+        "💵 UPI ID 1 -  Lays@slc\n\n"
+        "💵 UPI ID 2 - wtf69kartik@fam (Tap to copy)\n\n"
+        "📸 [Click here to scan QR](https://files.catbox.moe/4dee5y.jpg)\n\n"
+        "♻️ If payment is not getting sent on above given QR code then inform admin.\n\n"
+        "‼️ Must send screenshot after payment."
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("📤 Send Screenshot", url="https://t.me/your_admin_username")],
+        [InlineKeyboardButton("❌ Close", callback_data="close_ads")]
+    ]
+
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    if is_verified(user_id):
+        await query.edit_message_text(
+            "👉 Go to my channel and click on the video you want. After that I will send you the video."
+        )
+    else:
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
+                InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
+            ],
+            [InlineKeyboardButton("🚫 Remove Ads (One Click)", callback_data="remove_ads")]
+        ]
+        await query.edit_message_text(
+            f"👋 Hello {username}!\n\n"
+            "Welcome to the InstaHub bot.\n\n"
+            "Please verify yourself first to access video for 24 h",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 # ---------------- VERIFIED HANDLER ----------------
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -235,6 +284,9 @@ def main():
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("verified", verified_handler))
     app.add_handler(CallbackQueryHandler(join_check_callback, pattern="check_join"))
+    app.add_handler(CallbackQueryHandler(remove_ads_callback, pattern="remove_ads"))
+    app.add_handler(CallbackQueryHandler(close_ads_callback, pattern="close_ads"))
+
     print("Bot started...")
     app.run_polling()
 
