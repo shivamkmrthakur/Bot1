@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot_verify.py
+# bot.py
 
 import os
 import json
@@ -83,6 +83,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Check if joined required channels
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+            keyboard.append([InlineKeyboardButton("🔄 Try Again", callback_data="check_join")])
             await update.message.reply_text(
                 f"👋 Hello {username}\n\n"
                 "You need to join my Channel/Group to use me.\n\n"
@@ -138,6 +139,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+            keyboard.append([InlineKeyboardButton("🔄 Try Again", callback_data="check_join")])
             await update.message.reply_text(
                 "🔒 You must join all required channels first.",
                 reply_markup=InlineKeyboardMarkup(keyboard)
@@ -165,7 +167,46 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Invalid command. Go to my channel and then watch your videos.", parse_mode="Markdown")
 
+# ---------------- CALLBACK HANDLER ----------------
+from telegram.ext import CallbackQueryHandler
 
+async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+
+    await query.answer()  # remove loading state
+
+    if not await check_user_in_channels(context.bot, user_id):
+        keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+        keyboard.append([InlineKeyboardButton("🔄 Try Again", callback_data="check_join")])
+        await query.edit_message_text(
+            f"👋 Hello {username}\n\n"
+            "You still need to join my Channel/Group.\n\n"
+            "Kindly please join below 👇",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        # Already joined, now show verify step
+        if is_verified(user_id):
+            await query.edit_message_text(
+                "👉 Go to my channel and click on the video you want. After that I will send you the video."
+            )
+        else:
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
+                    InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
+                ]
+            ]
+            await query.edit_message_text(
+                f"👋 Hello {username}!\n\n"
+                "Welcome to the InstaHub bot.\n\n"
+                "Please verify yourself first to access video for 24 h",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+# ---------------- VERIFIED HANDLER ----------------
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
@@ -188,11 +229,12 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Invalid or expired verification code.")
 
-
+# ---------------- MAIN ----------------
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("verified", verified_handler))
+    app.add_handler(CallbackQueryHandler(join_check_callback, pattern="check_join"))
     print("Bot started...")
     app.run_polling()
 
