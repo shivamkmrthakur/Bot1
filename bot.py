@@ -160,8 +160,8 @@ async def check_user_in_channels(bot, user_id):
 def verify_menu_kb():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
-            InlineKeyboardButton("ℹ️ How to Verify?", url="https://your-site.com/how-to-verify.html")
+            InlineKeyboardButton("✅ Verify (open site)", url="https://tpi.li/q5ncPDLZYp"),
+            InlineKeyboardButton("ℹ️ How to Verify?", url="https://t.me/howtoverifyyourtoken")
         ],
         [InlineKeyboardButton("🚫 Remove Ads (One Click)", callback_data="remove_ads")]
     ])
@@ -186,7 +186,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if is_verified(user_id):
-            await update.message.reply_text("👉 Go to my channel and click on the video you want. After that I will send you the video.")
+            await update.message.reply_text("👉 Go to InstaHub and click on the video you want. After that I will send you the video.")
         else:
             await update.message.reply_text(
                 f"👋 Hello {username}!\n\nWelcome to the InstaHub bot.\n\nPlease verify yourself first to access video for 24 h",
@@ -205,7 +205,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         code = payload.replace("verified=", "", 1).strip()
         if validate_code_anyuser(code):
             set_verified_24h(user_id)
-            await update.message.reply_text("✅ Verified for 24 hours! Now Go to my channel and watch the video you want.")
+            await update.message.reply_text("✅ Verified for 24 hours! Now Go to InstaHub and watch the video you want.")
         else:
             await update.message.reply_text("❌ Invalid or expired verification code.")
         return
@@ -230,7 +230,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("🔒 You are not verified yet.\n\nPlease verify yourself first to get videos.", reply_markup=verify_menu_kb())
     else:
-        await update.message.reply_text("❌ Invalid command. Go to my channel and then watch your videos.", parse_mode="Markdown")
+        await update.message.reply_text("❌ Invalid command. Go to InstaHub and then watch your videos.", parse_mode="Markdown")
 
 # ---------------- CALLBACK HANDLERS ----------------
 async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -245,7 +245,7 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(f"👋 Hello {username}\n\nYou still need to join my Channel/Group.\n\nKindly please join below 👇", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         if is_verified(user_id):
-            await query.edit_message_text("👉 Go to my channel and click on the video you want. After that I will send you the video.")
+            await query.edit_message_text("👉 Go to InstaHub and click on the video you want. After that I will send you the video.")
         else:
             await query.edit_message_text(f"👋 Hello {username}!\n\nWelcome to the InstaHub bot.\n\nPlease verify yourself first to access video for 24 h", reply_markup=verify_menu_kb())
 
@@ -270,7 +270,7 @@ async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     keyboard = [
-        [InlineKeyboardButton("📤 Send Screenshot", url="https://t.me/your_admin_username")],
+        [InlineKeyboardButton("📤 Send Screenshot", url="https://t.me/Instahubpaymentcheckbot")],
         [InlineKeyboardButton("❌ Close", callback_data="close_ads")]
     ]
 
@@ -283,7 +283,7 @@ async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
 
     if is_verified(user_id):
-        await query.edit_message_text("👉 Go to my channel and click on the video you want. After that I will send you the video.")
+        await query.edit_message_text("👉 Go to InstaHub and click on the video you want. After that I will send you the video.")
     else:
         await query.edit_message_text(f"👋 Hello {username}!\n\nWelcome to the InstaHub bot.\n\nPlease verify yourself first to access video for 24 h", reply_markup=verify_menu_kb())
 
