@@ -11,10 +11,11 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 # ----------------- CONFIG -----------------
 TOKEN = "8409312798:AAF9aVNMdSynS5ndEOiyKe8Bc2NDe3dNk1I"
-SOURCE_CHANNEL = "@botdatabase1"
+SOURCE_CHANNEL = "@botdatabase1"   # jaha se video forward hoga
+JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]  # required channels
+
 VERIFY_FILE = "verified_users.json"
 
-# Secret key (must match client-side)
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 SIG_LEN = 12
 # ------------------------------------------
@@ -59,6 +60,18 @@ def validate_code_anyuser(code: str) -> bool:
     expected = hmac.new(SECRET_KEY, msg, hashlib.sha256).hexdigest()[:SIG_LEN]
     return hmac.compare_digest(expected, sig)
 
+# ---------------- HELPERS ----------------
+async def check_user_in_channels(bot, user_id):
+    """Check if user is in all required JOIN_CHANNELS"""
+    for channel in JOIN_CHANNELS:
+        try:
+            member = await bot.get_chat_member(channel, user_id)
+            if member.status in ["left", "kicked"]:
+                return False
+        except Exception:
+            return False
+    return True
+
 # ---------------- HANDLERS ----------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -67,10 +80,21 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ---- If only "/start" (no video id) ----
     if text == "/start":
-        if is_verified(user_id):
-            # Already verified -> Show channel instruction
+        # Step 1: Check if joined required channels
+        if not await check_user_in_channels(context.bot, user_id):
+            keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
             await update.message.reply_text(
-                "👉 Go to my channel and click on the video you watch. After that I will send you the video."
+                f"👋 Hello {username}\n\n"
+                "You need to join my Channel/Group to use me.\n\n"
+                "Kindly please join below 👇",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        # Step 2: If already verified
+        if is_verified(user_id):
+            await update.message.reply_text(
+                "👉 Go to my channel and click on the video you want. After that I will send you the video."
             )
         else:
             # Not verified -> Show greeting + verify + how-to-verify buttons
@@ -100,7 +124,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if validate_code_anyuser(code):
             set_verified(user_id)
             await update.message.reply_text(
-                "✅ Verified for 24 hours! Now Go to my cheneal and waatch the video you want.",
+                "✅ Verified for 24 hours! Now Go to my channel and watch the video you want.",
                 parse_mode="Markdown"
             )
         else:
@@ -111,6 +135,15 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if payload.isdigit():
         video_id = payload
         context.user_data["video_id"] = video_id
+
+        if not await check_user_in_channels(context.bot, user_id):
+            keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+            await update.message.reply_text(
+                "🔒 You must join all required channels first.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
         if is_verified(user_id):
             try:
                 await context.bot.forward_message(chat_id=user_id, from_chat_id=SOURCE_CHANNEL, message_id=int(video_id))
@@ -118,7 +151,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 await update.message.reply_text(f"❌ Error forwarding video. Details: {e}")
         else:
-            # Not verified -> Send verify + how-to-verify button again
             keyboard = [
                 [
                     InlineKeyboardButton("✅ Verify (open site)", url="https://adrinolinks.com/NmL2Y"),
@@ -131,7 +163,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
     else:
-        await update.message.reply_text("❌ Invalid command. Go to my cheneal and then watch you videos.", parse_mode="Markdown")
+        await update.message.reply_text("❌ Invalid command. Go to my channel and then watch your videos.", parse_mode="Markdown")
+
 
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
@@ -150,10 +183,11 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if validate_code_anyuser(code):
         set_verified(user_id)
         await update.message.reply_text(
-            "✅ Verified for 24 hours! Now you recive you requested video for next 24 hours Enjoy"
+            "✅ Verified for 24 hours! Now you can receive your requested videos."
         )
     else:
         await update.message.reply_text("❌ Invalid or expired verification code.")
+
 
 def main():
     app = Application.builder().token(TOKEN).build()
