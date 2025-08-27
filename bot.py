@@ -216,9 +216,8 @@ async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         "● 299 rs For 3 Months Prime Membership\n\n"
         "● 550 rs For 6 Months Prime Membership\n\n"
         "● 999 rs For 1 Year Prime Membership\n\n"
-        "💵 UPI ID 1 -  Lays@slc\n\n"
-        "💵 UPI ID 2 - wtf69kartik@fam (Tap to copy)\n\n"
-        "📸 [Click here to scan QR](https://files.catbox.moe/4dee5y.jpg)\n\n"
+        "💵 UPI ID - roshanbot@fam (Tap to copy)\n\n"
+        "📸 [Click here to scan QR](https://insta-hub.netlify.app/qr.png)\n\n"
         "♻️ If payment is not getting sent on above given QR code then inform admin.\n\n"
         "‼️ Must send screenshot after payment."
     )
