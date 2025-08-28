@@ -205,8 +205,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if is_verified(user_id):
             try:
-                await context.bot.copy_message(chat_id=user_id, from_chat_id=SOURCE_CHANNEL, message_id=int(video_id))
-                await update.message.reply_text("✅ Here’s your requested video.")
+                await context.bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=SOURCE_CHANNEL,
+                    message_id=int(video_id),
+                    protect_content=True   # 🔒 Block forward + screenshot
+                )
+                await update.message.reply_text("✅ Here’s your requested video.\n\n⚠️ Forwarding & Screenshot are blocked for this content.")
             except Exception as e:
                 await update.message.reply_text(f"⚠️ Oops! Couldn’t send the video.\n\nError: {e}")
         else:
