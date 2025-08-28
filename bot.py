@@ -145,7 +145,7 @@ def verify_menu_kb():
             InlineKeyboardButton("✅ Verify (Open Site)", url="https://adrinolinks.com/NmL2Y"),
             InlineKeyboardButton("ℹ️ How to Verify?", url="https://t.me/howtoverifyyourtoken")
         ],
-        [InlineKeyboardButton("🚫 Remove Ads / Any Dount", callback_data="remove_ads")]
+        [InlineKeyboardButton("🚫 Remove Ads / Any Doubt", callback_data="remove_ads")]
     ])
 
 # ---------------- HANDLERS ----------------
