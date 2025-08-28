@@ -4,134 +4,169 @@
 import os
 import json
 import time
-import hmac
-import hashlib
-import base64
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # ----------------- CONFIG -----------------
 TOKEN = "8409312798:AAF9aVNMdSynS5ndEOiyKe8Bc2NDe3dNk1I"
-SOURCE_CHANNEL = "@instahubackup"  
-SOURCE_CHANNEL_2 = "@instahubackup2"
-JOIN_CHANNELS = [SOURCE_CHANNEL, SOURCE_CHANNEL_2]
+OWNER_ID = 7994709010  
+SOURCE_CHANNEL = -1002934836217
+JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
-# ----------------- DATABASE -----------------
-users_db = {}
+# ----------------- FILE STORAGE -----------------
+USER_FILE = "verified.json"
 
-# ----------------- HANDLERS -----------------
+def load_users():
+    if os.path.exists(USER_FILE):
+        with open(USER_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_users(users):
+    with open(USER_FILE, "w") as f:
+        json.dump(users, f)
+
+# ----------------- COMMANDS -----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("✅ Verify Now", callback_data="verify")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        "👋 Welcome to [InstaHub](https://t.me/Instaa_hubb)!\n\n"
-        "🔹 To continue, please verify your account by joining our required channels.\n"
-        "⏳ You’ll then get **24 hours free access**.\n\n"
-        "💎 Want unlimited access? Upgrade to Premium anytime!",
-        reply_markup=reply_markup,
-        disable_web_page_preview=True
-    )
-
-async def verify_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-
-    # check if user joined all channels
-    for ch in JOIN_CHANNELS:
-        member = await context.bot.get_chat_member(ch, user_id)
-        if member.status not in ["member", "administrator", "creator"]:
-            keyboard = [[InlineKeyboardButton("📌 Join Channels", url=f"https://t.me/{ch[1:]}")]]
-            await query.message.reply_text(
-                "⚠️ You must join all required channels first!\n\n"
-                f"👉 Please join: {', '.join(JOIN_CHANNELS)}\n"
-                "Then press Verify again ✅",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                disable_web_page_preview=True
-            )
-            return
-
-    # set free 24h access
-    expiry = int(time.time()) + 24 * 3600
-    users_db[user_id] = {"plan": "Free (24h)", "expiry": expiry}
+    user = update.effective_user
+    users = load_users()
+    if str(user.id) not in users:
+        users[str(user.id)] = {"plan": "none", "expiry": 0}
+        save_users(users)
 
     keyboard = [
-        [InlineKeyboardButton("💎 Upgrade to Premium", callback_data="plans")],
-        [InlineKeyboardButton("🚀 Open InstaHub", url="https://t.me/Instaa_hubb")]
+        [InlineKeyboardButton("✅ Verify Now", callback_data="verify")],
+        [InlineKeyboardButton("💎 Premium Plans", callback_data="premium")]
     ]
-    await query.message.reply_text(
-        "🎉 Congratulations! You are now verified for **24 hours free access**.\n\n"
-        "👉 Start exploring videos on [InstaHub](https://t.me/Instaa_hubb).\n\n"
-        "💡 Tip: Upgrade to Premium for **unlimited, ad-free access**!",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        disable_web_page_preview=True
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    welcome_text = (
+        f"👋 Welcome <b>{user.first_name}</b> to <b>InstaHub</b>!\n\n"
+        "🚀 Unlock unlimited access to our Insta tools.\n\n"
+        "✅ First, verify by joining our channels.\n"
+        "💎 Or get Premium for full access.\n\n"
+        "👉 Click below to continue."
     )
 
-async def plans_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="HTML")
+
+# ----------------- VERIFY -----------------
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    keyboard = [[InlineKeyboardButton("📤 Send Screenshot", callback_data="screenshot")]]
-    await query.message.reply_text(
-        "💎 *Premium Plans*\n\n"
-        "🔹 1 Month – ₹99\n"
-        "🔹 3 Months – ₹249\n"
-        "🔹 Lifetime – ₹499\n\n"
-        "📌 Pay via UPI: `instahub@upi`\n"
-        "📤 After payment, send a screenshot to verify.",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        disable_web_page_preview=True,
-        parse_mode="Markdown"
-    )
+    await query.answer()
 
-async def screenshot_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.message.reply_text(
-        "📸 Please upload your payment screenshot here.\n\n"
-        "Our team will verify and upgrade you to Premium within 30 minutes ✅"
-    )
+    if query.data == "verify":
+        # Check join requirement
+        for ch in JOIN_CHANNELS:
+            member = await context.bot.get_chat_member(chat_id=ch, user_id=query.from_user.id)
+            if member.status not in ["member", "administrator", "creator"]:
+                await query.message.reply_text(
+                    f"❌ Please join {ch} first and then try again."
+                )
+                return
+        
+        users = load_users()
+        users[str(query.from_user.id)] = {
+            "plan": "free",
+            "expiry": int(time.time()) + 24 * 3600
+        }
+        save_users(users)
 
+        await query.message.reply_text(
+            "🎉 Congratulations! You are verified for <b>24h Free Access</b>.\n\n"
+            "👉 Enjoy InstaHub tools now!",
+            parse_mode="HTML"
+        )
+
+    elif query.data == "premium":
+        premium_text = (
+            "💎 <b>Premium Plans</b>\n\n"
+            "✨ 7 Days - ₹99\n"
+            "✨ 30 Days - ₹299\n\n"
+            "📌 Send payment screenshot to admin:\n"
+            "@InstaHub_Admin"
+        )
+        await query.message.reply_text(premium_text, parse_mode="HTML")
+
+# ----------------- EXPIRY -----------------
 async def expiry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    user = users_db.get(user_id)
+    users = load_users()
+    user = users.get(str(update.effective_user.id))
 
-    if not user:
-        await update.message.reply_text(
-            "⚠️ You don’t have an active plan.\n\n"
-            "👉 Please verify first or upgrade to Premium.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="plans")]])
-        )
+    if not user or user["plan"] == "none":
+        await update.message.reply_text("❌ You are not verified yet. Use /verify first.")
         return
 
-    remaining = int(user["expiry"] - time.time())
-    if remaining <= 0:
+    exp_time = user["expiry"]
+    left = exp_time - int(time.time())
+
+    if left <= 0:
+        await update.message.reply_text("⚠️ Your plan has expired. Please verify again or buy Premium.")
+    else:
+        hours = left // 3600
+        minutes = (left % 3600) // 60
         await update.message.reply_text(
-            "⏳ Your free plan has expired.\n\n"
-            "💎 Upgrade to Premium for unlimited access!",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Upgrade Now", callback_data="plans")]])
+            f"⏳ Your {user['plan']} plan will expire in {hours}h {minutes}m."
         )
+
+# ----------------- POST (BROADCAST) -----------------
+async def post_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ You are not allowed to use this command.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text("Usage: /post Your message here")
+        return
+    
+    text = " ".join(context.args)
+    users = load_users()
+    count = 0
+
+    for user_id in users.keys():
+        try:
+            await context.bot.send_message(chat_id=int(user_id), text=text)
+            count += 1
+        except Exception:
+            pass
+    
+    await update.message.reply_text(f"✅ Broadcast sent to {count} users.")
+
+# ----------------- DASHBOARD -----------------
+async def dashboard_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ You are not allowed to use this command.")
         return
 
-    hours = remaining // 3600
-    minutes = (remaining % 3600) // 60
-    await update.message.reply_text(
-        f"🕒 Your current plan: *{user['plan']}*\n"
-        f"⏳ Time left: {hours}h {minutes}m\n\n"
-        "💡 Upgrade anytime for **full Premium access**!",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("💎 Upgrade", callback_data="plans")]]),
-        parse_mode="Markdown"
+    users = load_users()
+    total_users = len(users)
+    verified_users = sum(1 for u in users.values() if u["plan"] == "free")
+    premium_users = sum(1 for u in users.values() if u["plan"] == "premium")
+    current_time = int(time.time())
+    active_users = sum(1 for u in users.values() if u["expiry"] > current_time)
+
+    msg = (
+        "📊 <b>Dashboard</b>\n\n"
+        f"👤 Total Users: <b>{total_users}</b>\n"
+        f"✅ 24h Verified: <b>{verified_users}</b>\n"
+        f"💎 Premium Users: <b>{premium_users}</b>\n"
+        f"📅 Active Users: <b>{active_users}</b>"
     )
+
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 # ----------------- MAIN -----------------
 def main():
-    app = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).build()
+    
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(CommandHandler("verify", start))
+    application.add_handler(CommandHandler("expiry", expiry))
+    application.add_handler(CommandHandler("post", post_handler))
+    application.add_handler(CommandHandler("dashboard", dashboard_handler))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("expiry", expiry))
-    app.add_handler(CallbackQueryHandler(verify_callback, pattern="verify"))
-    app.add_handler(CallbackQueryHandler(plans_callback, pattern="plans"))
-    app.add_handler(CallbackQueryHandler(screenshot_callback, pattern="screenshot"))
-
-    print("✅ Bot is running...")
-    app.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
