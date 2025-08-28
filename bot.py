@@ -270,7 +270,7 @@ async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
     keyboard = [
-        [InlineKeyboardButton("📤 Send Screenshot", url="https://t.me/Instahubpaymentcheckbot")],
+        [InlineKeyboardButton("📤 Send Screenshot(Admin)", url="https://t.me/Instahubpaymentcheckbot")],
         [InlineKeyboardButton("❌ Close", callback_data="close_ads")]
     ]
 
