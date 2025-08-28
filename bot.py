@@ -145,7 +145,7 @@ def verify_menu_kb():
             InlineKeyboardButton("✅ Verify (Open Site)", url="https://adrinolinks.com/NmL2Y"),
             InlineKeyboardButton("ℹ️ How to Verify?", url="https://t.me/howtoverifyyourtoken")
         ],
-        [InlineKeyboardButton("🚫 Remove Ads / Get Premium", callback_data="remove_ads")]
+        [InlineKeyboardButton("🚫 Remove Ads / Any Dount", callback_data="remove_ads")]
     ])
 
 # ---------------- HANDLERS ----------------
@@ -167,13 +167,17 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if is_verified(user_id):
-            await update.message.reply_text("✅ You’re already verified!\n\nGo to InstaHub, choose a video, and I’ll send it here for you.")
+            await update.message.reply_text(
+                "✅ You’re already verified!\n\nGo to [@Instaa_hubb](https://t.me/instaa_hubb), choose a video, and I’ll send it here for you.",
+                parse_mode="Markdown"
+            )
         else:
             await update.message.reply_text(
                 f"👋 Welcome {username}!\n\n"
-                "This bot helps you get InstaHub videos.\n\n"
+                "This bot helps you get videos from [@Instaa_hubb](https://t.me/instaa_hubb).\n\n"
                 "🔒 Please verify yourself to unlock 24-hour access.",
-                reply_markup=verify_menu_kb()
+                reply_markup=verify_menu_kb(),
+                parse_mode="Markdown"
             )
         return
 
@@ -187,7 +191,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         code = payload.replace("verified=", "", 1).strip()
         if validate_code_anyuser(code):
             set_verified_24h(user_id)
-            await update.message.reply_text("🎉 Verification successful! You’re now verified for 24 hours.\n\nGo back to InstaHub and pick your video.")
+            await update.message.reply_text(
+                "🎉 Verification successful! You’re now verified for 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and pick your video.",
+                parse_mode="Markdown"
+            )
         else:
             await update.message.reply_text("❌ That verification code is invalid or expired.")
         return
@@ -211,7 +218,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_id=int(video_id),
                     protect_content=True   # 🔒 Block forward + screenshot
                 )
-                await update.message.reply_text("✅ Here’s your requested video.\n\n⚠️ Forwarding & Screenshot are blocked for this content.")
+                await update.message.reply_text("✅ Here’s your requested video.\n\n")
             except Exception as e:
                 await update.message.reply_text(f"⚠️ Oops! Couldn’t send the video.\n\nError: {e}")
         else:
@@ -220,7 +227,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=verify_menu_kb()
             )
     else:
-        await update.message.reply_text("❌ Invalid command.\n\n👉 Open InstaHub, select a video, and use this bot again.")
+        await update.message.reply_text("❌ Invalid command.\n\n👉 Open [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and use this bot again.", parse_mode="Markdown")
 
 # ---------------- CALLBACK HANDLERS ----------------
 async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -240,12 +247,16 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     else:
         if is_verified(user_id):
-            await query.edit_message_text("✅ You’re already verified!\n\nGo back to InstaHub, choose a video, and I’ll deliver it here.")
+            await query.edit_message_text(
+                "✅ You’re already verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), choose a video, and I’ll deliver it here.",
+                parse_mode="Markdown"
+            )
         else:
             await query.edit_message_text(
                 f"👋 Welcome {username}!\n\n"
-                "Before accessing InstaHub videos, please verify yourself for 24-hour access.",
-                reply_markup=verify_menu_kb()
+                "Before accessing videos, please verify yourself for 24-hour access at [@Instaa_hubb](https://t.me/instaa_hubb).",
+                reply_markup=verify_menu_kb(),
+                parse_mode="Markdown"
             )
 
 async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -283,7 +294,10 @@ async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
 
     if is_verified(user_id):
-        await query.edit_message_text("✅ You’re verified!\n\nGo back to InstaHub, select a video, and I’ll send it here.")
+        await query.edit_message_text(
+            "✅ You’re verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and I’ll send it here.",
+            parse_mode="Markdown"
+        )
     else:
         await query.edit_message_text(
             f"👋 Hi {username}!\n\nPlease complete verification first to unlock 24-hour video access.",
@@ -307,7 +321,10 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if validate_code_anyuser(code):
         set_verified_24h(user_id)
-        await update.message.reply_text("🎉 Success! You’re verified for the next 24 hours.\n\nGo back to InstaHub and request your videos.")
+        await update.message.reply_text(
+            "🎉 Success! You’re verified for the next 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and request your videos.",
+            parse_mode="Markdown"
+        )
     else:
         await update.message.reply_text("❌ Invalid or expired verification code.")
 
