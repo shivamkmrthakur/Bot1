@@ -20,7 +20,7 @@ SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 REDEEM_WINDOW_SECONDS = 3 * 60 * 60
 
 # ----------------- DATABASE SETUP -----------------
-DB_URL = os.getenv("postgresql://postgres:dxQLpasirfqfmuBNoWCUomgQmIIGjPmK@postgres.railway.internal:5432/railway")  # Railway environment variable
+DB_URL = os.getenv("postgresql://postgres:dxQLpasirfqfmuBNoWCUomgQmIIGjPmK@yamabiko.proxy.rlwy.net:55695/railway")  # Railway environment variable
 conn = psycopg2.connect(DB_URL)
 cur = conn.cursor()
 cur.execute("""
