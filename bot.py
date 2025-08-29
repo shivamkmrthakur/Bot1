@@ -1,67 +1,62 @@
 #!/usr/bin/env python3
-# bot.py
+# bot.py (final with extra multi-user token system)
 
+import os
+import json
 import time
 import hmac
 import hashlib
 import base64
-import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # ----------------- CONFIG -----------------
-TOKEN = "8293205720:AAGPGvxkXJmy_-zj0rYSjFruKTba-1bVit8"
-SOURCE_CHANNEL = -1002934836217   # वीडियो source channel
+TOKEN = "8409312798:AAErfYLxziXCDEtZWGHj8JFStG1_Vn2uNWg"
+SOURCE_CHANNEL = -1002934836217
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
+VERIFY_FILE = "verified_users.json"
+TOKEN_USAGE_FILE = "token_usage.json"
+
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
-REDEEM_WINDOW_SECONDS = 3 * 60 * 60   # 3h redeem window
+REDEEM_WINDOW_SECONDS = 3 * 60 * 60
 
-# ----------------- DATABASE -----------------
-DB_URL = "postgresql://postgres:dxQLpasirfqfmuBNoWCUomgQmIIGjPmK@yamabiko.proxy.rlwy.net:55695/railway"
+# ---------------- VERIFY HELPERS -----------------
+def load_verified():
+    if os.path.exists(VERIFY_FILE):
+        try:
+            with open(VERIFY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
 
-def init_db():
-    with psycopg2.connect(DB_URL) as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-            CREATE TABLE IF NOT EXISTS verified (
-                user_id TEXT PRIMARY KEY,
-                expiry REAL
-            )
-            """)
-            conn.commit()
-
-init_db()
+def save_verified(data):
+    with open(VERIFY_FILE, "w") as f:
+        json.dump(data, f)
 
 def set_verified_for_seconds(user_id: int, seconds: int):
+    verified = load_verified()
     now = time.time()
-    with psycopg2.connect(DB_URL) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT expiry FROM verified WHERE user_id=%s", (str(user_id),))
-            row = cur.fetchone()
-            current_expiry = row[0] if row else 0
-            base = max(now, current_expiry)
-            expiry = base + seconds
-            cur.execute("""
-                INSERT INTO verified (user_id, expiry) 
-                VALUES (%s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET expiry = %s
-            """, (str(user_id), expiry, expiry))
-            conn.commit()
+    current_expiry = verified.get(str(user_id), 0)
+    base = max(now, current_expiry)
+    verified[str(user_id)] = base + seconds
+    save_verified(verified)
 
 def set_verified_24h(user_id: int):
-    set_verified_for_seconds(user_id, 24 * 3600)
+    set_verified_for_seconds(user_id, 24 * 60 * 60)
 
 def is_verified(user_id: int):
-    with psycopg2.connect(DB_URL) as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT expiry FROM verified WHERE user_id=%s", (str(user_id),))
-            row = cur.fetchone()
-            if row and time.time() < row[0]:
-                return True
+    verified = load_verified()
+    key = str(user_id)
+    if key in verified:
+        if time.time() < verified[key]:
+            return True
+        del verified[key]
+        save_verified(verified)
     return False
 
-# ---------------- TOKEN SYSTEM ----------------
+# ---------------- legacy validate ----------------
 SIG_LEN = 12
 
 def validate_code_anyuser(code: str) -> bool:
@@ -70,12 +65,13 @@ def validate_code_anyuser(code: str) -> bool:
         ts = int(ts_str)
     except Exception:
         return False
-    if abs(time.time() - ts) > 600:  # 10 min expiry
+    if abs(time.time() - ts) > 600:
         return False
     msg = ts_str.encode()
     expected = hmac.new(SECRET_KEY, msg, hashlib.sha256).hexdigest()[:SIG_LEN]
     return hmac.compare_digest(expected, sig)
 
+# ---------------- premium token helpers (old) ----------------
 def build_premium_token_payload(user_id: int, days: int, hours: int, ts: int) -> str:
     return f"{ts}|{user_id}|{days}|{hours}"
 
@@ -133,6 +129,49 @@ def validate_premium_token_for_user(token_b64: str, actual_user_id: int):
 
     return True, "OK", grant_seconds
 
+# ---------------- NEW: multi-user token helpers ----------------
+def load_token_usage():
+    if os.path.exists(TOKEN_USAGE_FILE):
+        try:
+            with open(TOKEN_USAGE_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_token_usage(data):
+    with open(TOKEN_USAGE_FILE, "w") as f:
+        json.dump(data, f)
+
+def validate_limit_token(token_b64: str):
+    ok, msg, payload, hex_sig = decode_premium_token(token_b64)
+    if not ok:
+        return False, msg, 0, 0, ""
+
+    parts = payload.split("|")
+    if len(parts) != 4:
+        return False, "Invalid payload fields.", 0, 0, ""
+    try:
+        ts = int(parts[0])
+        limit = int(parts[1])
+        days = int(parts[2])
+        hours = int(parts[3])
+    except Exception:
+        return False, "Payload contains invalid integers.", 0, 0, ""
+
+    if time.time() - ts > REDEEM_WINDOW_SECONDS:
+        return False, "Token redeem window (3h) has passed.", 0, 0, ""
+
+    expected_hex = sign_payload_hex(payload)
+    if not hmac.compare_digest(expected_hex, hex_sig):
+        return False, "Signature mismatch.", 0, 0, ""
+
+    grant_seconds = days * 24 * 3600 + hours * 3600
+    if grant_seconds <= 0:
+        return False, "Duration must be positive.", 0, 0, ""
+
+    return True, "OK", grant_seconds, limit, payload
+
 # ---------------- HELPERS ----------------
 async def check_user_in_channels(bot, user_id):
     for channel in JOIN_CHANNELS:
@@ -159,7 +198,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.first_name or "User"
 
-    # fresh start
     if text == "/start":
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
@@ -187,74 +225,82 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # payload after /start
+    # Handle verification payload
     if " " in text:
         payload = text.split(" ", 1)[1].strip()
     else:
         payload = text[len("/start"):].strip()
 
+    # ✅ NEW: Handle multi-user limit tokens
+    if payload.startswith("token="):
+        code = payload.replace("token=", "", 1).strip()
+        ok, msg, grant_seconds, limit, payload_key = validate_limit_token(code)
+        if not ok:
+            await update.message.reply_text(f"❌ {msg}")
+            return
+
+        usage = load_token_usage()
+        count = usage.get(payload_key, 0)
+
+        if count >= limit:
+            await update.message.reply_text("❌ Sorry, this token has already been used by maximum users.")
+            return
+
+        set_verified_for_seconds(user_id, grant_seconds)
+        usage[payload_key] = count + 1
+        save_token_usage(usage)
+
+        days = grant_seconds // (24*3600)
+        hours = (grant_seconds % (24*3600)) // 3600
+        await update.message.reply_text(
+            f"🎉 Success! You’re now verified.\n\n"
+            f"✅ Access Granted for: {days} day(s) {hours} hour(s)\n"
+            f"🔑 Token usage: {usage[payload_key]}/{limit}\n\n"
+            f"👉 Now go back to [@Instaa_hubb](https://t.me/instaa_hubb) and select your video."
+        )
+        return
+
     if payload.startswith("verified="):
         code = payload.replace("verified=", "", 1).strip()
         if validate_code_anyuser(code):
             set_verified_24h(user_id)
-            await update.message.reply_text("🎉 Verification successful! You’re now verified for 24 hours.")
+            await update.message.reply_text(
+                "🎉 Verification successful! You’re now verified for 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and pick your video.",
+                parse_mode="Markdown"
+            )
         else:
-            await update.message.reply_text("❌ Invalid or expired verification code.")
+            await update.message.reply_text("❌ That verification code is invalid or expired.")
         return
 
+    # Handle video ID
     if payload.isdigit():
-        video_id = int(payload)
+        video_id = payload
+        context.user_data["video_id"] = video_id
+
         if not await check_user_in_channels(context.bot, user_id):
-            await update.message.reply_text("❌ Please join required channels first.")
+            keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+            keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
+            await update.message.reply_text("🔒 Please join all required channels to continue.", reply_markup=InlineKeyboardMarkup(keyboard))
             return
+
         if is_verified(user_id):
             try:
                 await context.bot.copy_message(
                     chat_id=user_id,
                     from_chat_id=SOURCE_CHANNEL,
-                    message_id=video_id,
+                    message_id=int(video_id),
                     protect_content=True
                 )
-                await update.message.reply_text("✅ Here’s your requested video.")
+                await update.message.reply_text("✅ Here’s your requested video.\n\n")
             except Exception as e:
-                await update.message.reply_text(f"⚠️ Error: {e}")
+                await update.message.reply_text(f"⚠️ Oops! Couldn’t send the video.\n\nError: {e}")
         else:
-            await update.message.reply_text("🔒 Please verify first.", reply_markup=verify_menu_kb())
+            await update.message.reply_text(
+                "🔒 You haven’t verified yet.\n\nPlease complete verification first to unlock video access.",
+                reply_markup=verify_menu_kb()
+            )
     else:
-        await update.message.reply_text("❌ Invalid command.\n\n👉 Use bot from [@Instaa_hubb](https://t.me/instaa_hubb).", parse_mode="Markdown")
-
-async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    set_verified_24h(user_id)
-    await update.message.reply_text("🎉 Success! You’re verified for 24h.")
-
-async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        await update.message.reply_text("⚠️ Usage: `/redeem <TOKEN>`", parse_mode="Markdown")
-        return
-    token = parts[1].strip()
-    ok, msg, grant_seconds = validate_premium_token_for_user(token, update.effective_user.id)
-    if ok:
-        set_verified_for_seconds(update.effective_user.id, grant_seconds)
-        await update.message.reply_text("🎉 Premium redeemed successfully!")
-    else:
-        await update.message.reply_text(f"❌ {msg}")
-
-async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    if await check_user_in_channels(context.bot, user_id):
-        await query.message.edit_text("✅ Thanks! You joined all channels. Use /start again.")
-    else:
-        await query.answer("❌ Still missing channel join!", show_alert=True)
-
-async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.message.reply_text("✨ Premium removes ads.\n💵 Pay via UPI: `roshanbot@fam`")
-
-async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.callback_query.message.delete()
+        await update.message.reply_text("❌ Invalid command.\n\n👉 Open [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and use this bot again.", parse_mode="Markdown")
 
 # ---------------- MAIN ----------------
 def main():
