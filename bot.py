@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot.py (final with extra multi-user token system)
+# final bot.py with multi-user token system + 24h verify
 
 import os
 import json
@@ -11,7 +11,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # ----------------- CONFIG -----------------
-TOKEN = "8409312798:AAErfYLxziXCDEtZWGHj8JFStG1_Vn2uNWg"
+TOKEN = "8409312798:AAErfYLxziXCDEtZWGHj8JFStG1_Vn2uNWg"   # ⚠️ यहां अपना bot token डालो
 SOURCE_CHANNEL = -1002934836217
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
@@ -225,7 +225,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # Handle verification payload
     if " " in text:
         payload = text.split(" ", 1)[1].strip()
     else:
@@ -301,6 +300,51 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     else:
         await update.message.reply_text("❌ Invalid command.\n\n👉 Open [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and use this bot again.", parse_mode="Markdown")
+
+# ---------------- VERIFIED ----------------
+async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    user_id = update.effective_user.id
+
+    code = None
+    if text.startswith("/verified="):
+        code = text.replace("/verified=", "", 1).strip()
+    elif text.startswith("/verified "):
+        code = text.split(" ", 1)[1].strip()
+
+    if not code:
+        await update.message.reply_text("⚠️ Invalid format.\n\nUse: `/verified=YOUR_CODE`")
+        return
+
+    if validate_code_anyuser(code):
+        set_verified_24h(user_id)
+        await update.message.reply_text(
+            "🎉 Success! You’re verified for the next 24 hours.\n\n"
+            "Go back to [@Instaa_hubb](https://t.me/instaa_hubb) and request your videos.",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text("❌ Invalid or expired verification code.")
+
+# ---------------- REDEEM ----------------
+async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    user_id = update.effective_user.id
+    parts = text.split(maxsplit=1)
+
+    if len(parts) < 2:
+        await update.message.reply_text("⚠️ Usage:\n`/redeem <TOKEN>`")
+        return
+    token = parts[1].strip()
+
+    ok, msg, grant_seconds = validate_premium_token_for_user(token, user_id)
+    if ok:
+        set_verified_for_seconds(user_id, grant_seconds)
+        days = grant_seconds // (24*3600)
+        hours = (grant_seconds % (24*3600)) // 3600
+        await update.message.reply_text(f"🎉 Premium redeemed!\n\n✅ You’re verified for {days} day(s) and {hours} hour(s). Enjoy your access!")
+    else:
+        await update.message.reply_text(f"❌ {msg}")
 
 # ---------------- MAIN ----------------
 def main():
