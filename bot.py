@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# final bot.py with multi-user token system + 24h verify
+# bot.py
 
 import os
 import json
@@ -11,15 +11,59 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # ----------------- CONFIG -----------------
-TOKEN = "8409312798:AAErfYLxziXCDEtZWGHj8JFStG1_Vn2uNWg"   # ⚠️ यहां अपना bot token डालो
+TOKEN = "8409312798:AAErfYLxziXCDEtZWGHj8JFStG1_Vn2uNWg"
 SOURCE_CHANNEL = -1002934836217
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
 VERIFY_FILE = "verified_users.json"
-TOKEN_USAGE_FILE = "token_usage.json"
 
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 REDEEM_WINDOW_SECONDS = 3 * 60 * 60
+
+TOKEN_USAGE_FILE = "token_usage.json"
+
+def load_token_usage():
+    if os.path.exists(TOKEN_USAGE_FILE):
+        try:
+            with open(TOKEN_USAGE_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_token_usage(data):
+    with open(TOKEN_USAGE_FILE, "w") as f:
+        json.dump(data, f)
+
+def validate_limit_token(token_b64: str):
+    ok, msg, payload, hex_sig = decode_premium_token(token_b64)
+    if not ok:
+        return False, msg, 0, 0, ""
+
+    parts = payload.split("|")
+    if len(parts) != 4:
+        return False, "Invalid payload fields.", 0, 0, ""
+    try:
+        ts = int(parts[0])
+        limit = int(parts[1])
+        days = int(parts[2])
+        hours = int(parts[3])
+    except Exception:
+        return False, "Payload contains invalid integers.", 0, 0, ""
+
+    if time.time() - ts > REDEEM_WINDOW_SECONDS:
+        return False, "Token redeem window (3h) has passed.", 0, 0, ""
+
+    expected_hex = sign_payload_hex(payload)
+    if not hmac.compare_digest(expected_hex, hex_sig):
+        return False, "Signature mismatch.", 0, 0, ""
+
+    grant_seconds = days * 24 * 3600 + hours * 3600
+    if grant_seconds <= 0:
+        return False, "Duration must be positive.", 0, 0, ""
+
+    return True, "OK", grant_seconds, limit, payload
+
 
 # ---------------- VERIFY HELPERS -----------------
 def load_verified():
@@ -71,7 +115,7 @@ def validate_code_anyuser(code: str) -> bool:
     expected = hmac.new(SECRET_KEY, msg, hashlib.sha256).hexdigest()[:SIG_LEN]
     return hmac.compare_digest(expected, sig)
 
-# ---------------- premium token helpers (old) ----------------
+# ---------------- premium token helpers ----------------
 def build_premium_token_payload(user_id: int, days: int, hours: int, ts: int) -> str:
     return f"{ts}|{user_id}|{days}|{hours}"
 
@@ -129,49 +173,6 @@ def validate_premium_token_for_user(token_b64: str, actual_user_id: int):
 
     return True, "OK", grant_seconds
 
-# ---------------- NEW: multi-user token helpers ----------------
-def load_token_usage():
-    if os.path.exists(TOKEN_USAGE_FILE):
-        try:
-            with open(TOKEN_USAGE_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_token_usage(data):
-    with open(TOKEN_USAGE_FILE, "w") as f:
-        json.dump(data, f)
-
-def validate_limit_token(token_b64: str):
-    ok, msg, payload, hex_sig = decode_premium_token(token_b64)
-    if not ok:
-        return False, msg, 0, 0, ""
-
-    parts = payload.split("|")
-    if len(parts) != 4:
-        return False, "Invalid payload fields.", 0, 0, ""
-    try:
-        ts = int(parts[0])
-        limit = int(parts[1])
-        days = int(parts[2])
-        hours = int(parts[3])
-    except Exception:
-        return False, "Payload contains invalid integers.", 0, 0, ""
-
-    if time.time() - ts > REDEEM_WINDOW_SECONDS:
-        return False, "Token redeem window (3h) has passed.", 0, 0, ""
-
-    expected_hex = sign_payload_hex(payload)
-    if not hmac.compare_digest(expected_hex, hex_sig):
-        return False, "Signature mismatch.", 0, 0, ""
-
-    grant_seconds = days * 24 * 3600 + hours * 3600
-    if grant_seconds <= 0:
-        return False, "Duration must be positive.", 0, 0, ""
-
-    return True, "OK", grant_seconds, limit, payload
-
 # ---------------- HELPERS ----------------
 async def check_user_in_channels(bot, user_id):
     for channel in JOIN_CHANNELS:
@@ -225,12 +226,14 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
+    # Handle verification payload
     if " " in text:
         payload = text.split(" ", 1)[1].strip()
     else:
         payload = text[len("/start"):].strip()
 
-    # ✅ NEW: Handle multi-user limit tokens
+    
+    # ✅ NEW: Handle multi-user tokens
     if payload.startswith("token="):
         code = payload.replace("token=", "", 1).strip()
         ok, msg, grant_seconds, limit, payload_key = validate_limit_token(code)
@@ -288,7 +291,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=user_id,
                     from_chat_id=SOURCE_CHANNEL,
                     message_id=int(video_id),
-                    protect_content=True
+                    protect_content=True   # 🔒 Block forward + screenshot
                 )
                 await update.message.reply_text("✅ Here’s your requested video.\n\n")
             except Exception as e:
@@ -300,6 +303,81 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     else:
         await update.message.reply_text("❌ Invalid command.\n\n👉 Open [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and use this bot again.", parse_mode="Markdown")
+
+# ---------------- CALLBACK HANDLERS ----------------
+async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    if not await check_user_in_channels(context.bot, user_id):
+        keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+        keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
+        await query.edit_message_text(
+            f"👋 Hi {username},\n\n"
+            "You still haven’t joined all the required channels.\n\n"
+            "👉 Please join them and then hit Retry.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        if is_verified(user_id):
+            await query.edit_message_text(
+                "✅ You’re already verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), choose a video, and I’ll deliver it here.",
+                parse_mode="Markdown"
+            )
+        else:
+            await query.edit_message_text(
+                f"👋 Welcome {username}!\n\n"
+                "Before accessing videos, please verify yourself for 24-hour access at [@Instaa_hubb](https://t.me/instaa_hubb).",
+                reply_markup=verify_menu_kb(),
+                parse_mode="Markdown"
+            )
+
+async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    text = (
+        f"👋 Hey {username},\n\n"
+        "✨ Upgrade to **Premium Membership** and enjoy ad-free, unlimited access:\n\n"
+        "📌 Plans:\n"
+        "• 7 Days – ₹30\n"
+        "• 1 Month – ₹110\n"
+        "• 3 Months – ₹299\n"
+        "• 6 Months – ₹550\n"
+        "• 1 Year – ₹999\n\n"
+        "💵 Pay via UPI ID: `roshanbot@fam`\n\n"
+        "📸 [Scan QR Code](https://insta-hub.netlify.app/qr.png)\n\n"
+        "⚠️ If payment fails on QR, contact the admin.\n\n"
+        "📤 Don’t forget to send a payment screenshot after completing the transaction!"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("📤 Send Screenshot(Admin)", url="https://t.me/Instahubpaymentcheckbot")],
+        [InlineKeyboardButton("❌ Close", callback_data="close_ads")]
+    ]
+
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    if is_verified(user_id):
+        await query.edit_message_text(
+            "✅ You’re verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and I’ll send it here.",
+            parse_mode="Markdown"
+        )
+    else:
+        await query.edit_message_text(
+            f"👋 Hi {username}!\n\nPlease complete verification first to unlock 24-hour video access.",
+            reply_markup=verify_menu_kb()
+        )
 
 # ---------------- VERIFIED ----------------
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -319,8 +397,7 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if validate_code_anyuser(code):
         set_verified_24h(user_id)
         await update.message.reply_text(
-            "🎉 Success! You’re verified for the next 24 hours.\n\n"
-            "Go back to [@Instaa_hubb](https://t.me/instaa_hubb) and request your videos.",
+            "🎉 Success! You’re verified for the next 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and request your videos.",
             parse_mode="Markdown"
         )
     else:
