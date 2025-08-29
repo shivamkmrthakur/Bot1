@@ -20,6 +20,76 @@ VERIFY_FILE = "verified_users.json"
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 REDEEM_WINDOW_SECONDS = 3 * 60 * 60
 
+# ---------------- NEW: hatched short-token system ----------------
+TOKEN_USAGE_FILE = "token_usage.json"
+ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+def load_token_usage():
+    if os.path.exists(TOKEN_USAGE_FILE):
+        try:
+            with open(TOKEN_USAGE_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_token_usage(data):
+    with open(TOKEN_USAGE_FILE, "w") as f:
+        json.dump(data, f)
+
+def simple_decode(token: str) -> str:
+    """
+    Decode token created by simple_encode in JS.
+    Uses ALPHABET mapping to convert to integer, then to bytes -> string.
+    """
+    num = 0
+    for ch in token:
+        if ch not in ALPHABET:
+            raise ValueError("Invalid character in token")
+        num = num * len(ALPHABET) + ALPHABET.index(ch)
+    if num == 0:
+        return ""
+    raw = num.to_bytes((num.bit_length() + 7) // 8, "big")
+    try:
+        return raw.decode()
+    except Exception as e:
+        # if decoding fails, raise to signal invalid token
+        raise
+
+def validate_limit_token(token_str: str):
+    """
+    token_str: hatched short token (not base64)
+    Decodes to payload: ddmmyy|limit|days|hours
+    """
+    try:
+        raw = simple_decode(token_str)
+    except Exception:
+        return False, "❌ Invalid token or decode error.", 0, 0, ""
+
+    parts = raw.split("|")
+    if len(parts) != 4:
+        return False, "❌ Invalid token format.", 0, 0, ""
+    ddmmyy, limit_s, days_s, hours_s = parts
+    try:
+        limit = int(limit_s)
+        days = int(days_s)
+        hours = int(hours_s)
+    except Exception:
+        return False, "❌ Invalid numeric values in token.", 0, 0, ""
+
+    # token valid only for today
+    today = time.strftime("%d%m%y")
+    if ddmmyy != today:
+        return False, "❌ Token expired or invalid date.", 0, 0, ""
+
+    grant_seconds = days * 24 * 3600 + hours * 3600
+    if grant_seconds <= 0:
+        return False, "❌ Duration must be positive.", 0, 0, ""
+
+    return True, "OK", grant_seconds, limit, raw
+# ---------------- END hatched system ----------------
+
+
 # ---------------- VERIFY HELPERS -----------------
 def load_verified():
     if os.path.exists(VERIFY_FILE):
@@ -186,6 +256,36 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         payload = text.split(" ", 1)[1].strip()
     else:
         payload = text[len("/start"):].strip()
+
+    
+    # ✅ NEW: Handle hatched multi-user tokens (short, scrambled)
+    if payload.startswith("token="):
+        code = payload.replace("token=", "", 1).strip()
+        ok, msg, grant_seconds, limit, payload_key = validate_limit_token(code)
+        if not ok:
+            await update.message.reply_text(f"❌ {msg}")
+            return
+
+        usage = load_token_usage()
+        count = usage.get(payload_key, 0)
+
+        if count >= limit:
+            await update.message.reply_text("❌ Sorry, this token has already been used by maximum users.")
+            return
+
+        set_verified_for_seconds(user_id, grant_seconds)
+        usage[payload_key] = count + 1
+        save_token_usage(usage)
+
+        days = grant_seconds // (24*3600)
+        hours = (grant_seconds % (24*3600)) // 3600
+        await update.message.reply_text(
+            f"🎉 Success! You’re now verified.\n\n"
+            f"✅ Access Granted for: {days} day(s) {hours} hour(s)\n"
+            f"🔑 Token usage: {usage[payload_key]}/{limit}\n\n"
+            f"👉 Now go back to [@Instaa_hubb](https://t.me/instaa_hubb) and select your video."
+        )
+        return
 
     if payload.startswith("verified="):
         code = payload.replace("verified=", "", 1).strip()
@@ -363,33 +463,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-def validate_limit_token(token_b64: str):
-    try:
-        raw = base64.b64decode(token_b64).decode()
-    except Exception:
-        return False, "❌ Token is not valid base64.", 0, 0, ""
-
-    parts = raw.split("|")
-    if len(parts) != 4:
-        return False, "❌ Invalid token format.", 0, 0, ""
-
-    ddmmyy, limit, days, hours = parts
-    try:
-        limit = int(limit)
-        days = int(days)
-        hours = int(hours)
-    except Exception:
-        return False, "❌ Invalid values in token.", 0, 0, ""
-
-    # ✅ Token सिर्फ आज की date पर valid रहेगा
-    today = time.strftime("%d%m%y")
-    if ddmmyy != today:
-        return False, "❌ Token expired or invalid date.", 0, 0, ""
-
-    grant_seconds = days * 24 * 3600 + hours * 3600
-    if grant_seconds <= 0:
-        return False, "❌ Duration must be positive.", 0, 0, ""
-
-    return True, "OK", grant_seconds, limit, raw
