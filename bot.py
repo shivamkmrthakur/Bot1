@@ -12,7 +12,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # ----------------- CONFIG -----------------
-TOKEN = "YOUR_BOT_TOKEN"
+TOKEN = "8293205720:AAGPGvxkXJmy_-zj0rYSjFruKTba-1bVit8"
 SOURCE_CHANNEL = -1002934836217
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
@@ -20,7 +20,7 @@ SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 REDEEM_WINDOW_SECONDS = 3 * 60 * 60
 
 # ----------------- DATABASE SETUP -----------------
-DB_URL = os.getenv("DATABASE_URL")  # Railway environment variable
+DB_URL = os.getenv("postgresql://postgres:dxQLpasirfqfmuBNoWCUomgQmIIGjPmK@postgres.railway.internal:5432/railway")  # Railway environment variable
 conn = psycopg2.connect(DB_URL)
 cur = conn.cursor()
 cur.execute("""
