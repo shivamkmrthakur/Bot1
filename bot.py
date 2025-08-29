@@ -2,6 +2,7 @@
 # bot.py
 
 import os
+import json
 import time
 import hmac
 import hashlib
@@ -11,64 +12,46 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 
 # ----------------- CONFIG -----------------
-TOKEN = "8293205720:AAGPGvxkXJmy_-zj0rYSjFruKTba-1bVit8"
+TOKEN = "YOUR_BOT_TOKEN"
 SOURCE_CHANNEL = -1002934836217
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 REDEEM_WINDOW_SECONDS = 3 * 60 * 60
 
-DATABASE_URL = "postgresql://postgres:ldmbL0jjXKdZ83X6J8aP@containers-us-west-57.railway.app:6904/railway"
+# ----------------- DATABASE SETUP -----------------
+DB_URL = os.getenv("DATABASE_URL")  # Railway environment variable
+conn = psycopg2.connect(DB_URL)
+cur = conn.cursor()
+cur.execute("""
+CREATE TABLE IF NOT EXISTS verified (
+    user_id TEXT PRIMARY KEY,
+    expiry REAL
+)
+""")
+conn.commit()
 
-# ---------------- DB HELPERS ----------------
-def init_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS verified_users (
-            user_id BIGINT PRIMARY KEY,
-            expiry BIGINT
-        )
-    """)
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def save_user(user_id: int, expiry: int):
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO verified_users (user_id, expiry)
-        VALUES (%s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET expiry = EXCLUDED.expiry
-    """, (user_id, expiry))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def get_user_expiry(user_id: int):
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("SELECT expiry FROM verified_users WHERE user_id = %s", (user_id,))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row[0] if row else None
-
-# ---------------- VERIFY HELPERS ----------------
 def set_verified_for_seconds(user_id: int, seconds: int):
     now = time.time()
-    current_expiry = get_user_expiry(user_id) or 0
+    cur.execute("SELECT expiry FROM verified WHERE user_id=%s", (str(user_id),))
+    row = cur.fetchone()
+    current_expiry = row[0] if row else 0
     base = max(now, current_expiry)
-    new_expiry = int(base + seconds)
-    save_user(user_id, new_expiry)
+    expiry = base + seconds
+    cur.execute("""
+        INSERT INTO verified (user_id, expiry) 
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET expiry = %s
+    """, (str(user_id), expiry, expiry))
+    conn.commit()
 
 def set_verified_24h(user_id: int):
     set_verified_for_seconds(user_id, 24 * 60 * 60)
 
 def is_verified(user_id: int):
-    expiry = get_user_expiry(user_id)
-    if expiry and time.time() < expiry:
+    cur.execute("SELECT expiry FROM verified WHERE user_id=%s", (str(user_id),))
+    row = cur.fetchone()
+    if row and time.time() < row[0]:
         return True
     return False
 
@@ -145,60 +128,228 @@ def validate_premium_token_for_user(token_b64: str, actual_user_id: int):
 
     return True, "OK", grant_seconds
 
+# ---------------- HELPERS ----------------
+async def check_user_in_channels(bot, user_id):
+    for channel in JOIN_CHANNELS:
+        try:
+            member = await bot.get_chat_member(channel, user_id)
+            if member.status in ["left", "kicked"]:
+                return False
+        except Exception:
+            return False
+    return True
+
+def verify_menu_kb():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Verify (Open Site)", url="https://adrinolinks.com/NmL2Y"),
+            InlineKeyboardButton("ℹ️ How to Verify?", url="https://t.me/howtoverifyyourtoken")
+        ],
+        [InlineKeyboardButton("🚫 Remove Ads / Any Doubt", callback_data="remove_ads")]
+    ])
+
 # ---------------- HANDLERS ----------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
     user_id = update.effective_user.id
-    if is_verified(user_id):
-        await update.message.reply_text("✅ You are already verified!")
-    else:
-        buttons = [[InlineKeyboardButton("✅ Verify Now", callback_data="check_join")]]
-        await update.message.reply_text(
-            "🚀 Please join the required channels to get verified.",
-            reply_markup=InlineKeyboardMarkup(buttons),
-        )
+    username = update.effective_user.first_name or "User"
 
-async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    expiry = get_user_expiry(user_id)
-    if expiry and time.time() < expiry:
-        left = int(expiry - time.time())
-        hours = left // 3600
-        mins = (left % 3600) // 60
-        await update.message.reply_text(f"✅ Verified! Time left: {hours}h {mins}m")
-    else:
-        await update.message.reply_text("❌ Not verified!")
+    if text == "/start":
+        if not await check_user_in_channels(context.bot, user_id):
+            keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+            keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
+            await update.message.reply_text(
+                f"👋 Hi {username}!\n\n"
+                "To continue using this bot, please join all the required channels first.\n\n"
+                "👉 Once done, tap **Retry** below.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
 
-async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text("⚠️ Usage: /redeem <token>")
+        if is_verified(user_id):
+            await update.message.reply_text(
+                "✅ You’re already verified!\n\nGo to [@Instaa_hubb](https://t.me/instaa_hubb), choose a video, and I’ll send it here for you.",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                f"👋 Welcome {username}!\n\n"
+                "This bot helps you get videos from [@Instaa_hubb](https://t.me/instaa_hubb).\n\n"
+                "🔒 Please verify yourself to unlock 24-hour access.",
+                reply_markup=verify_menu_kb(),
+                parse_mode="Markdown"
+            )
         return
-    token = context.args[0]
-    ok, msg, seconds = validate_premium_token_for_user(token, user_id)
-    if not ok:
-        await update.message.reply_text(f"❌ Invalid: {msg}")
-        return
-    set_verified_for_seconds(user_id, seconds)
-    await update.message.reply_text(f"✅ Premium activated for {seconds//3600} hours!")
 
+    # Handle verification payload
+    if " " in text:
+        payload = text.split(" ", 1)[1].strip()
+    else:
+        payload = text[len("/start"):].strip()
+
+    if payload.startswith("verified="):
+        code = payload.replace("verified=", "", 1).strip()
+        if validate_code_anyuser(code):
+            set_verified_24h(user_id)
+            await update.message.reply_text(
+                "🎉 Verification successful! You’re now verified for 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and pick your video.",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text("❌ That verification code is invalid or expired.")
+        return
+
+    # Handle video ID
+    if payload.isdigit():
+        video_id = payload
+        context.user_data["video_id"] = video_id
+
+        if not await check_user_in_channels(context.bot, user_id):
+            keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+            keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
+            await update.message.reply_text("🔒 Please join all required channels to continue.", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        if is_verified(user_id):
+            try:
+                await context.bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=SOURCE_CHANNEL,
+                    message_id=int(video_id),
+                    protect_content=True   # 🔒 Block forward + screenshot
+                )
+                await update.message.reply_text("✅ Here’s your requested video.\n\n")
+            except Exception as e:
+                await update.message.reply_text(f"⚠️ Oops! Couldn’t send the video.\n\nError: {e}")
+        else:
+            await update.message.reply_text(
+                "🔒 You haven’t verified yet.\n\nPlease complete verification first to unlock video access.",
+                reply_markup=verify_menu_kb()
+            )
+    else:
+        await update.message.reply_text("❌ Invalid command.\n\n👉 Open [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and use this bot again.", parse_mode="Markdown")
+
+# ---------------- CALLBACK HANDLERS ----------------
 async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user_id = query.from_user.id
-    set_verified_24h(user_id)
-    await query.edit_message_text("🎉 Verified for 24h!")
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    if not await check_user_in_channels(context.bot, user_id):
+        keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
+        keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
+        await query.edit_message_text(
+            f"👋 Hi {username},\n\n"
+            "You still haven’t joined all the required channels.\n\n"
+            "👉 Please join them and then hit Retry.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        if is_verified(user_id):
+            await query.edit_message_text(
+                "✅ You’re already verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), choose a video, and I’ll deliver it here.",
+                parse_mode="Markdown"
+            )
+        else:
+            await query.edit_message_text(
+                f"👋 Welcome {username}!\n\n"
+                "Before accessing videos, please verify yourself for 24-hour access at [@Instaa_hubb](https://t.me/instaa_hubb).",
+                reply_markup=verify_menu_kb(),
+                parse_mode="Markdown"
+            )
 
 async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("Ads removed for you!")
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    text = (
+        f"👋 Hey {username},\n\n"
+        "✨ Upgrade to **Premium Membership** and enjoy ad-free, unlimited access:\n\n"
+        "📌 Plans:\n"
+        "• 7 Days – ₹30\n"
+        "• 1 Month – ₹110\n"
+        "• 3 Months – ₹299\n"
+        "• 6 Months – ₹550\n"
+        "• 1 Year – ₹999\n\n"
+        "💵 Pay via UPI ID: `roshanbot@fam`\n\n"
+        "📸 [Scan QR Code](https://insta-hub.netlify.app/qr.png)\n\n"
+        "⚠️ If payment fails on QR, contact the admin.\n\n"
+        "📤 Don’t forget to send a payment screenshot after completing the transaction!"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("📤 Send Screenshot(Admin)", url="https://t.me/Instahubpaymentcheckbot")],
+        [InlineKeyboardButton("❌ Close", callback_data="close_ads")]
+    ]
+
+    await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer("Closed ads.")
+    user_id = query.from_user.id
+    username = query.from_user.first_name or "User"
+    await query.answer()
+
+    if is_verified(user_id):
+        await query.edit_message_text(
+            "✅ You’re verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and I’ll send it here.",
+            parse_mode="Markdown"
+        )
+    else:
+        await query.edit_message_text(
+            f"👋 Hi {username}!\n\nPlease complete verification first to unlock 24-hour video access.",
+            reply_markup=verify_menu_kb()
+        )
+
+# ---------------- VERIFIED ----------------
+async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    user_id = update.effective_user.id
+
+    code = None
+    if text.startswith("/verified="):
+        code = text.replace("/verified=", "", 1).strip()
+    elif text.startswith("/verified "):
+        code = text.split(" ", 1)[1].strip()
+
+    if not code:
+        await update.message.reply_text("⚠️ Invalid format.\n\nUse: `/verified=YOUR_CODE`")
+        return
+
+    if validate_code_anyuser(code):
+        set_verified_24h(user_id)
+        await update.message.reply_text(
+            "🎉 Success! You’re verified for the next 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and request your videos.",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text("❌ Invalid or expired verification code.")
+
+# ---------------- REDEEM ----------------
+async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+    user_id = update.effective_user.id
+    parts = text.split(maxsplit=1)
+
+    if len(parts) < 2:
+        await update.message.reply_text("⚠️ Usage:\n`/redeem <TOKEN>`")
+        return
+    token = parts[1].strip()
+
+    ok, msg, grant_seconds = validate_premium_token_for_user(token, user_id)
+    if ok:
+        set_verified_for_seconds(user_id, grant_seconds)
+        days = grant_seconds // (24*3600)
+        hours = (grant_seconds % (24*3600)) // 3600
+        await update.message.reply_text(f"🎉 Premium redeemed!\n\n✅ You’re verified for {days} day(s) and {hours} hour(s). Enjoy your access!")
+    else:
+        await update.message.reply_text(f"❌ {msg}")
 
 # ---------------- MAIN ----------------
 def main():
-    init_db()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("verified", verified_handler))
