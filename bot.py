@@ -299,35 +299,58 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ That verification code is invalid or expired.")
         return
 
-    # Handle video ID
-    if payload.isdigit():
-        video_id = payload
-        context.user_data["video_id"] = video_id
+       # ---------------- VIDEO ID(s) HANDLING ----------------
+    if payload.isdigit() or "-" in payload or "&" in payload:
+        video_ids = []
 
+        if "-" in payload:  # range format e.g. 1-4
+            try:
+                start_id, end_id = map(int, payload.split("-"))
+                if start_id <= end_id:
+                    video_ids = list(range(start_id, end_id + 1))
+            except Exception:
+                await update.message.reply_text("❌ Invalid range format. Use like 1-4.")
+                return
+
+        elif "&" in payload:  # multiple specific IDs e.g. 1&2&5
+            try:
+                video_ids = [int(x) for x in payload.split("&") if x.isdigit()]
+            except Exception:
+                await update.message.reply_text("❌ Invalid multi-ID format. Use like 1&2&5.")
+                return
+
+        else:  # single id
+            video_ids = [int(payload)]
+
+        # Check join requirement
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
             keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
             await update.message.reply_text("🔒 Please join all required channels to continue.", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
+        # Check verification
         if is_verified(user_id):
-            try:
-                await context.bot.copy_message(
-                    chat_id=user_id,
-                    from_chat_id=SOURCE_CHANNEL,
-                    message_id=int(video_id),
-                    protect_content=True   # 🔒 Block forward + screenshot
-                )
-                await update.message.reply_text("✅ Here’s your requested video.\n\n")
-            except Exception as e:
-                await update.message.reply_text(f"⚠️ Oops! Couldn’t send the video.\n\nError: {e}")
+            sent = 0
+            for vid in video_ids:
+                try:
+                    await context.bot.copy_message(
+                        chat_id=user_id,
+                        from_chat_id=SOURCE_CHANNEL,
+                        message_id=vid,
+                        protect_content=True   # 🔒 Block forward + screenshot
+                    )
+                    sent += 1
+                except Exception as e:
+                    await update.message.reply_text(f"⚠️ Couldn’t send video ID {vid}. Error: {e}")
+            if sent > 0:
+                await update.message.reply_text(f"✅ Sent {sent} video(s).")
         else:
             await update.message.reply_text(
                 "🔒 You haven’t verified yet.\n\nPlease complete verification first to unlock video access.",
                 reply_markup=verify_menu_kb()
             )
-    else:
-        await update.message.reply_text("❌ Invalid command.\n\n👉 Open [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and use this bot again.", parse_mode="Markdown")
+        return
 
 # ---------------- CALLBACK HANDLERS ----------------
 async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
