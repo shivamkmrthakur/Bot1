@@ -527,7 +527,14 @@ async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ {msg}")
 
 # ---------------- MAIN ----------------
+from telegram.ext import JobQueue
+
 def main():
+    # Create JobQueue explicitly
+    job_queue = JobQueue()
+    
+    # Attach job queue to Application
+    app = Application.builder().token(TOKEN).job_queue(job_queue).build()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("verified", verified_handler))
