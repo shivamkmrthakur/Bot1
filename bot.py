@@ -27,7 +27,7 @@ ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 # ---------------- AUTO DELETE VIDEO AFTER 12H ----------------
 import asyncio
 VIDEO_LOG_FILE = "sent_videos.json"
-VIDEO_EXPIRY_SECONDS = 12 * 60 * 60  # 12h
+VIDEO_EXPIRY_SECONDS = 1 * 60  # 12h
 
 def load_sent_videos():
     if os.path.exists(VIDEO_LOG_FILE):
@@ -75,7 +75,7 @@ async def cleanup_expired_videos(bot):
         if changed:
             save_sent_videos(data)
 
-        await asyncio.sleep(600)  # check every 10 min
+        await asyncio.sleep(10)  # check every 10 min
 # ---------------------------------------------------------------
 
 
