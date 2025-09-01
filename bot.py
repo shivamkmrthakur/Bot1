@@ -24,6 +24,61 @@ REDEEM_WINDOW_SECONDS = 3 * 60 * 60
 TOKEN_USAGE_FILE = "token_usage.json"
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+# ---------------- AUTO DELETE VIDEO AFTER 12H ----------------
+import asyncio
+VIDEO_LOG_FILE = "sent_videos.json"
+VIDEO_EXPIRY_SECONDS = 12 * 60 * 60  # 12h
+
+def load_sent_videos():
+    if os.path.exists(VIDEO_LOG_FILE):
+        try:
+            with open(VIDEO_LOG_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_sent_videos(data):
+    with open(VIDEO_LOG_FILE, "w") as f:
+        json.dump(data, f)
+
+async def log_sent_video(user_id: int, message_id: int):
+    data = load_sent_videos()
+    now = int(time.time())
+    if str(user_id) not in data:
+        data[str(user_id)] = []
+    data[str(user_id)].append({"msg_id": message_id, "time": now})
+    save_sent_videos(data)
+
+async def cleanup_expired_videos(bot):
+    while True:
+        data = load_sent_videos()
+        now = int(time.time())
+        changed = False
+
+        for user_id, msgs in list(data.items()):
+            remaining = []
+            for entry in msgs:
+                if now - entry["time"] > VIDEO_EXPIRY_SECONDS:
+                    try:
+                        await bot.delete_message(chat_id=int(user_id), message_id=entry["msg_id"])
+                    except Exception:
+                        pass
+                    changed = True
+                else:
+                    remaining.append(entry)
+            if remaining:
+                data[user_id] = remaining
+            else:
+                del data[user_id]
+
+        if changed:
+            save_sent_videos(data)
+
+        await asyncio.sleep(600)  # check every 10 min
+# ---------------------------------------------------------------
+
+
 def load_token_usage():
     if os.path.exists(TOKEN_USAGE_FILE):
         try:
@@ -480,6 +535,9 @@ def main():
     app.add_handler(CallbackQueryHandler(join_check_callback, pattern="check_join"))
     app.add_handler(CallbackQueryHandler(remove_ads_callback, pattern="remove_ads"))
     app.add_handler(CallbackQueryHandler(close_ads_callback, pattern="close_ads"))
+
+        # ✅ Start background cleaner
+    app.job_queue.run_repeating(lambda ctx: asyncio.create_task(cleanup_expired_videos(app.bot)), interval=600, first=10)
 
     print("Bot started...")
     app.run_polling()
