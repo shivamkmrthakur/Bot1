@@ -27,7 +27,7 @@ ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 # ---------------- AUTO DELETE VIDEO AFTER 12H ----------------
 VIDEO_LOG_FILE = "sent_videos.json"
-VIDEO_EXPIRY_SECONDS = 12 * 60 * 60   # 12 hours
+VIDEO_EXPIRY_SECONDS = 1 * 60   # 12 hours
 
 # ---------------- UTIL: JSON safe I/O ----------------
 def _safe_load_json(path: str, default):
@@ -95,7 +95,7 @@ async def cleanup_expired_videos(bot):
         if changed:
             save_sent_videos(data)
 
-        await asyncio.sleep(600)  # check every 10 min
+        await asyncio.sleep(10)  # check every 10 min
 
 
 # ---------------- TOKEN USAGE (short multi-user tokens) ----------------
