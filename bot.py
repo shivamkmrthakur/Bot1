@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# bot.py — Full version with all features + fixes + logging
+# bot.py
 
 import os
 import json
@@ -7,41 +7,8 @@ import time
 import hmac
 import hashlib
 import base64
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
-import psycopg2
-from datetime import datetime, timedelta
-
-# ---------------- DB CONNECTION (Postgres) ----------------
-# Use Railway env var if set, else fallback to provided URL
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:dxQLpasirfqfmuBNoWCUomgQmIIGjPmK@yamabiko.proxy.rlwy.net:55695/railway")
-conn = psycopg2.connect(DB_URL, sslmode="require")
-cur = conn.cursor()
-
-# Ensure tables exist
-cur.execute("""
-CREATE TABLE IF NOT EXISTS verified_users (
-    user_id BIGINT PRIMARY KEY,
-    expiry TIMESTAMP NOT NULL
-);
-""")
-cur.execute("""
-CREATE TABLE IF NOT EXISTS token_usage (
-    token_key TEXT PRIMARY KEY,
-    used_count INT NOT NULL DEFAULT 0
-);
-""")
-cur.execute("""
-CREATE TABLE IF NOT EXISTS sent_videos (
-    user_id BIGINT,
-    msg_id BIGINT,
-    sent_time TIMESTAMP NOT NULL,
-    PRIMARY KEY (user_id, msg_id)
-);
-""")
-conn.commit()
-
 
 # ----------------- CONFIG -----------------
 TOKEN = "8409312798:AAErfYLxziXCDEtZWGHj8JFStG1_Vn2uNWg"
@@ -57,55 +24,109 @@ REDEEM_WINDOW_SECONDS = 3 * 60 * 60
 TOKEN_USAGE_FILE = "token_usage.json"
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-# ---------------- AUTO DELETE VIDEO AFTER 12H ----------------
-VIDEO_LOG_FILE = "sent_videos.json"
-VIDEO_EXPIRY_SECONDS = 12 * 60 * 60   # 12 hours
-
-# ---------------- UTIL: JSON safe I/O ----------------
-def _safe_load_json(path: str, default):
-    if os.path.exists(path):
-        try:
-            with open(path, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[WARN] Could not read {path}: {e}")
-            return default
-    return default
-
-
-def _safe_save_json(path: str, data):
-    try:
-        with open(path, "w") as f:
-            json.dump(data, f)
-    except Exception as e:
-        print(f"[ERROR] Could not write {path}: {e}")
-
-
-# ---------------- VIDEO LOG ----------------
-def load_sent_videos():
-    return _safe_load_json(VIDEO_LOG_FILE, {})
-
-
-def save_sent_videos(data):
-    _safe_save_json(VIDEO_LOG_FILE, data)
-
-
-async def log_sent_video(user_id: int, message_id: int):
-    cur.execute(
-        "INSERT INTO sent_videos (user_id, msg_id, sent_time) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-        (user_id, message_id, datetime.utcnow())
-    )
-    conn.commit()
-    print(f"[LOG] Video {message_id} logged for user {user_id}")
-
 def load_token_usage():
-    """Return token usage as a dict {token_key: used_count} from DB."""
-    cur.execute("SELECT token_key, used_count FROM token_usage")
-    rows = cur.fetchall()
-    return {k: v for (k, v) in rows} if rows else {}
+    if os.path.exists(TOKEN_USAGE_FILE):
+        try:
+            with open(TOKEN_USAGE_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
 
+def save_token_usage(data):
+    with open(TOKEN_USAGE_FILE, "w") as f:
+        json.dump(data, f)
+
+def simple_decode(token: str) -> str:
+    """
+    Decode token created by simple_encode in JS.
+    Uses ALPHABET mapping to convert to integer, then to bytes -> string.
+    """
+    num = 0
+    for ch in token:
+        if ch not in ALPHABET:
+            raise ValueError("Invalid character in token")
+        num = num * len(ALPHABET) + ALPHABET.index(ch)
+    if num == 0:
+        return ""
+    raw = num.to_bytes((num.bit_length() + 7) // 8, "big")
+    try:
+        return raw.decode()
+    except Exception as e:
+        # if decoding fails, raise to signal invalid token
+        raise
+
+def validate_limit_token(token_str: str):
+    """
+    token_str: hatched short token (not base64)
+    Decodes to payload: ddmmyy|limit|days|hours
+    """
+    try:
+        raw = simple_decode(token_str)
+    except Exception:
+        return False, "❌ Invalid token or decode error.", 0, 0, ""
+
+    parts = raw.split("|")
+    if len(parts) != 4:
+        return False, "❌ Invalid token format.", 0, 0, ""
+    ddmmyy, limit_s, days_s, hours_s = parts
+    try:
+        limit = int(limit_s)
+        days = int(days_s)
+        hours = int(hours_s)
+    except Exception:
+        return False, "❌ Invalid numeric values in token.", 0, 0, ""
+
+    # token valid only for today
+    today = time.strftime("%d%m%y")
+    if ddmmyy != today:
+        return False, "❌ Token expired or invalid date.", 0, 0, ""
+
+    grant_seconds = days * 24 * 3600 + hours * 3600
+    if grant_seconds <= 0:
+        return False, "❌ Duration must be positive.", 0, 0, ""
+
+    return True, "OK", grant_seconds, limit, raw
+# ---------------- END hatched system ----------------
+
+
+# ---------------- VERIFY HELPERS -----------------
+def load_verified():
+    if os.path.exists(VERIFY_FILE):
+        try:
+            with open(VERIFY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_verified(data):
+    with open(VERIFY_FILE, "w") as f:
+        json.dump(data, f)
+
+def set_verified_for_seconds(user_id: int, seconds: int):
+    verified = load_verified()
+    now = time.time()
+    current_expiry = verified.get(str(user_id), 0)
+    base = max(now, current_expiry)
+    verified[str(user_id)] = base + seconds
+    save_verified(verified)
+
+def set_verified_24h(user_id: int):
+    set_verified_for_seconds(user_id, 24 * 60 * 60)
+
+def is_verified(user_id: int):
+    verified = load_verified()
+    key = str(user_id)
+    if key in verified:
+        if time.time() < verified[key]:
+            return True
+        del verified[key]
+        save_verified(verified)
+    return False
+
+# ---------------- legacy validate ----------------
 SIG_LEN = 12
-
 
 def validate_code_anyuser(code: str) -> bool:
     try:
@@ -119,21 +140,16 @@ def validate_code_anyuser(code: str) -> bool:
     expected = hmac.new(SECRET_KEY, msg, hashlib.sha256).hexdigest()[:SIG_LEN]
     return hmac.compare_digest(expected, sig)
 
-
-# ---------------- PREMIUM TOKEN HELPERS ----------------
-
+# ---------------- premium token helpers ----------------
 def build_premium_token_payload(user_id: int, days: int, hours: int, ts: int) -> str:
     return f"{ts}|{user_id}|{days}|{hours}"
-
 
 def sign_payload_hex(payload: str) -> str:
     return hmac.new(SECRET_KEY, payload.encode(), hashlib.sha256).hexdigest()
 
-
 def encode_premium_token(payload: str, hex_sig: str) -> str:
     combined = f"{payload}|{hex_sig}"
     return base64.b64encode(combined.encode()).decode()
-
 
 def decode_premium_token(token_b64: str):
     try:
@@ -149,7 +165,6 @@ def decode_premium_token(token_b64: str):
     if not hex_sig or len(hex_sig) < 10:
         return False, "Invalid signature part.", None, None
     return True, "OK", payload, hex_sig
-
 
 def validate_premium_token_for_user(token_b64: str, actual_user_id: int):
     ok, msg, payload, hex_sig = decode_premium_token(token_b64)
@@ -183,46 +198,7 @@ def validate_premium_token_for_user(token_b64: str, actual_user_id: int):
 
     return True, "OK", grant_seconds
 
-
-# ---------------- VERIFY STORAGE ----------------
-
-def load_verified():
-    return _safe_load_json(VERIFY_FILE, {})
-
-
-def save_verified(data):
-    _safe_save_json(VERIFY_FILE, data)
-
-
-def set_verified_for_seconds(user_id: int, seconds: int):
-    expiry = datetime.utcnow() + timedelta(seconds=seconds)
-    cur.execute(
-        """
-        INSERT INTO verified_users (user_id, expiry)
-        VALUES (%s, %s)
-        ON CONFLICT (user_id)
-        DO UPDATE SET expiry = EXCLUDED.expiry
-        """, (user_id, expiry)
-    )
-    conn.commit()
-    print(f"[VERIFY] User {user_id} verified until {expiry}")
-
-# ✅ NEW: helper to set exactly 24 hours
-def set_verified_24h(user_id: int):
-    """Shortcut to verify user for 24 hours."""
-    set_verified_for_seconds(user_id, 24 * 3600)
-
-
-# ✅ NEW: check verification status
-def is_verified(user_id: int) -> bool:
-    """Check if user is verified (expiry still valid)."""
-    cur.execute("SELECT expiry FROM verified_users WHERE user_id = %s", (user_id,))
-    row = cur.fetchone()
-    if not row:
-        return False
-    expiry = row[0]
-    return datetime.utcnow() < expiry
-
+# ---------------- HELPERS ----------------
 async def check_user_in_channels(bot, user_id):
     for channel in JOIN_CHANNELS:
         try:
@@ -233,7 +209,6 @@ async def check_user_in_channels(bot, user_id):
             return False
     return True
 
-
 def verify_menu_kb():
     return InlineKeyboardMarkup([
         [
@@ -243,23 +218,21 @@ def verify_menu_kb():
         [InlineKeyboardButton("🚫 Remove Ads / Any Doubt", callback_data="remove_ads")]
     ])
 
-
 # ---------------- HANDLERS ----------------
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user_id = update.effective_user.id
     username = update.effective_user.first_name or "User"
 
-    print(f"[START] User {user_id} sent: {text}")
-
     if text == "/start":
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
             keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
             await update.message.reply_text(
-                f"👋 Hi {username}!\n\nTo continue using this bot, please join all the required channels first.\n\n👉 Once done, tap **Retry** below.",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-                parse_mode="Markdown"
+                f"👋 Hi {username}!\n\n"
+                "To continue using this bot, please join all the required channels first.\n\n"
+                "👉 Once done, tap **Retry** below.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
 
@@ -270,18 +243,21 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await update.message.reply_text(
-                f"👋 Welcome {username}!\n\nThis bot helps you get videos from [@Instaa_hubb](https://t.me/instaa_hubb).\n\n🔒 Please verify yourself to unlock 24-hour access.",
+                f"👋 Welcome {username}!\n\n"
+                "This bot helps you get videos from [@Instaa_hubb](https://t.me/instaa_hubb).\n\n"
+                "🔒 Please verify yourself to unlock 24-hour access.",
                 reply_markup=verify_menu_kb(),
                 parse_mode="Markdown"
             )
         return
 
-    # Handle verification payload (after /start <payload>)
+    # Handle verification payload
     if " " in text:
         payload = text.split(" ", 1)[1].strip()
     else:
-        payload = text[len("/start"):].strip() if text.startswith("/start") else text
+        payload = text[len("/start"):].strip()
 
+    
     # ✅ NEW: Handle hatched multi-user tokens (short, scrambled)
     if payload.startswith("token="):
         code = payload.replace("token=", "", 1).strip()
@@ -304,10 +280,11 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         days = grant_seconds // (24*3600)
         hours = (grant_seconds % (24*3600)) // 3600
         await update.message.reply_text(
-            f"🎉 Success! You’re now verified.\n\n✅ Access Granted for: {days} day(s) {hours} hour(s)\n🔑 Token usage: {usage[payload_key]}/{limit}\n\n👉 Now go back to [@Instaa_hubb](https://t.me/instaa_hubb) and select your video.",
-            parse_mode="Markdown"
+            f"🎉 Success! You’re now verified.\n\n"
+            f"✅ Access Granted for: {days} day(s) {hours} hour(s)\n"
+            f"🔑 Token usage: {usage[payload_key]}/{limit}\n\n"
+            f"👉 Now go back to [@Instaa_hubb](https://t.me/instaa_hubb) and select your video."
         )
-        print(f"[TOKEN] limit-token used by {user_id}: {usage[payload_key]}/{limit}")
         return
 
     if payload.startswith("verified="):
@@ -322,7 +299,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ That verification code is invalid or expired.")
         return
 
-    # ---------------- VIDEO ID(s) HANDLING ----------------
+       # ---------------- VIDEO ID(s) HANDLING ----------------
     if payload.isdigit() or "-" in payload or "&" in payload:
         video_ids = []
 
@@ -357,26 +334,23 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sent = 0
             for vid in video_ids:
                 try:
-                    msg = await context.bot.copy_message(
+                    await context.bot.copy_message(
                         chat_id=user_id,
                         from_chat_id=SOURCE_CHANNEL,
                         message_id=vid,
                         protect_content=True   # 🔒 Block forward + screenshot
                     )
-                    await log_sent_video(user_id, msg.message_id)
                     sent += 1
                 except Exception as e:
                     await update.message.reply_text(f"⚠️ Couldn’t send video ID {vid}. Error: {e}")
-                    print(f"[SEND ERROR] user={user_id} vid={vid} err={e}")
             if sent > 0:
-                await update.message.reply_text(f"✅ Sent {sent} video(s). They will auto-delete after 12 hours.")
+                await update.message.reply_text(f"✅ Sent {sent} video(s).")
         else:
             await update.message.reply_text(
                 "🔒 You haven’t verified yet.\n\nPlease complete verification first to unlock video access.",
                 reply_markup=verify_menu_kb()
             )
         return
-
 
 # ---------------- CALLBACK HANDLERS ----------------
 async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -389,7 +363,9 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
         keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
         await query.edit_message_text(
-            f"👋 Hi {username},\n\nYou still haven’t joined all the required channels.\n\n👉 Please join them and then hit Retry.",
+            f"👋 Hi {username},\n\n"
+            "You still haven’t joined all the required channels.\n\n"
+            "👉 Please join them and then hit Retry.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     else:
@@ -400,11 +376,11 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             )
         else:
             await query.edit_message_text(
-                f"👋 Welcome {username}!\n\nBefore accessing videos, please verify yourself for 24-hour access at [@Instaa_hubb](https://t.me/instaa_hubb).",
+                f"👋 Welcome {username}!\n\n"
+                "Before accessing videos, please verify yourself for 24-hour access at [@Instaa_hubb](https://t.me/instaa_hubb).",
                 reply_markup=verify_menu_kb(),
                 parse_mode="Markdown"
             )
-
 
 async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -434,7 +410,6 @@ async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     await query.edit_message_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-
 async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -452,8 +427,7 @@ async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=verify_menu_kb()
         )
 
-
-# ---------------- /verified ----------------
+# ---------------- VERIFIED ----------------
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user_id = update.effective_user.id
@@ -465,7 +439,7 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         code = text.split(" ", 1)[1].strip()
 
     if not code:
-        await update.message.reply_text("⚠️ Invalid format.\n\nUse: `/verified=YOUR_CODE`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Invalid format.\n\nUse: `/verified=YOUR_CODE`")
         return
 
     if validate_code_anyuser(code):
@@ -477,15 +451,14 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Invalid or expired verification code.")
 
-
-# ---------------- /redeem ----------------
+# ---------------- REDEEM ----------------
 async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user_id = update.effective_user.id
     parts = text.split(maxsplit=1)
 
     if len(parts) < 2:
-        await update.message.reply_text("⚠️ Usage:\n`/redeem <TOKEN>`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Usage:\n`/redeem <TOKEN>`")
         return
     token = parts[1].strip()
 
@@ -498,27 +471,18 @@ async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ {msg}")
 
-
 # ---------------- MAIN ----------------
 def main():
     app = Application.builder().token(TOKEN).build()
-
-    # Command handlers
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("verified", verified_handler))
     app.add_handler(CommandHandler("redeem", redeem_handler))
-
-    # Callback handlers
     app.add_handler(CallbackQueryHandler(join_check_callback, pattern="check_join"))
     app.add_handler(CallbackQueryHandler(remove_ads_callback, pattern="remove_ads"))
     app.add_handler(CallbackQueryHandler(close_ads_callback, pattern="close_ads"))
 
-    # ✅ Start background cleaner (every 10 minutes)
-    app.job_queue.run_repeating(lambda ctx: asyncio.create_task(cleanup_expired_videos(app.bot)), interval=600, first=10)
-
-    print("[BOOT] Bot started and polling...")
+    print("Bot started...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
