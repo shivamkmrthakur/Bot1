@@ -207,6 +207,22 @@ def set_verified_for_seconds(user_id: int, seconds: int):
     conn.commit()
     print(f"[VERIFY] User {user_id} verified until {expiry}")
 
+# ✅ NEW: helper to set exactly 24 hours
+def set_verified_24h(user_id: int):
+    """Shortcut to verify user for 24 hours."""
+    set_verified_for_seconds(user_id, 24 * 3600)
+
+
+# ✅ NEW: check verification status
+def is_verified(user_id: int) -> bool:
+    """Check if user is verified (expiry still valid)."""
+    cur.execute("SELECT expiry FROM verified_users WHERE user_id = %s", (user_id,))
+    row = cur.fetchone()
+    if not row:
+        return False
+    expiry = row[0]
+    return datetime.utcnow() < expiry
+
 async def check_user_in_channels(bot, user_id):
     for channel in JOIN_CHANNELS:
         try:
