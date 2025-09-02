@@ -212,7 +212,7 @@ async def check_user_in_channels(bot, user_id):
 def verify_menu_kb():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Verify (Open Site)", url="https://adrinolinks.com/NmL2Y"),
+            InlineKeyboardButton("✅ Verify (Open Site)", url="https://adrinolinks.com/qHeN03lW"),
             InlineKeyboardButton("ℹ️ How to Verify?", url="https://t.me/howtoverifyyourtoken")
         ],
         [InlineKeyboardButton("🚫 Remove Ads / Any Doubt", callback_data="remove_ads")]
@@ -230,7 +230,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
             await update.message.reply_text(
                 f"👋 Hi {username}!\n\n"
-                "To continue using this bot, please join all the required channels first.\n\n"
+                "To continue using this bot, please join all the required backup channels first.\n\n"
                 "👉 Once done, tap **Retry** below.",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
@@ -238,13 +238,13 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if is_verified(user_id):
             await update.message.reply_text(
-                "✅ You’re already verified!\n\nGo to [@Instaa_hubb](https://t.me/instaa_hubb), choose a video, and I’ll send it here for you.",
+                "✅ You’re already verified!\n\nGo to [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1), choose a video, and I’ll send it here for you.",
                 parse_mode="Markdown"
             )
         else:
             await update.message.reply_text(
                 f"👋 Welcome {username}!\n\n"
-                "This bot helps you get videos from [@Instaa_hubb](https://t.me/instaa_hubb).\n\n"
+                "This bot helps you get videos from [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1).\n\n"
                 "🔒 Please verify yourself to unlock 24-hour access.",
                 reply_markup=verify_menu_kb(),
                 parse_mode="Markdown"
@@ -283,7 +283,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🎉 Success! You’re now verified.\n\n"
             f"✅ Access Granted for: {days} day(s) {hours} hour(s)\n"
             f"🔑 Token usage: {usage[payload_key]}/{limit}\n\n"
-            f"👉 Now go back to [@Instaa_hubb](https://t.me/instaa_hubb) and select your video."
+            f"👉 Now go back to [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1) and select your video."
         )
         return
 
@@ -292,7 +292,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if validate_code_anyuser(code):
             set_verified_24h(user_id)
             await update.message.reply_text(
-                "🎉 Verification successful! You’re now verified for 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and pick your video.",
+                "🎉 Verification successful! You’re now verified for 24 hours.\n\nGo back to [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1) and pick your video.",
                 parse_mode="Markdown"
             )
         else:
@@ -326,7 +326,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
             keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
-            await update.message.reply_text("🔒 Please join all required channels to continue.", reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.message.reply_text("🔒 Please join all required backup channels to continue.", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
         # Check verification
@@ -364,20 +364,20 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
         await query.edit_message_text(
             f"👋 Hi {username},\n\n"
-            "You still haven’t joined all the required channels.\n\n"
+            "You still haven’t joined all the required backup channels.\n\n"
             "👉 Please join them and then hit Retry.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
     else:
         if is_verified(user_id):
             await query.edit_message_text(
-                "✅ You’re already verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), choose a video, and I’ll deliver it here.",
+                "✅ You’re already verified!\n\nGo back to [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1), choose a video, and I’ll deliver it here.",
                 parse_mode="Markdown"
             )
         else:
             await query.edit_message_text(
                 f"👋 Welcome {username}!\n\n"
-                "Before accessing videos, please verify yourself for 24-hour access at [@Instaa_hubb](https://t.me/instaa_hubb).",
+                "Before accessing videos, please verify yourself for 24-hour access at [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1).",
                 reply_markup=verify_menu_kb(),
                 parse_mode="Markdown"
             )
@@ -418,7 +418,7 @@ async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if is_verified(user_id):
         await query.edit_message_text(
-            "✅ You’re verified!\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb), select a video, and I’ll send it here.",
+            "✅ You’re verified!\n\nGo back to [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1), select a video, and I’ll send it here.",
             parse_mode="Markdown"
         )
     else:
@@ -445,7 +445,7 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if validate_code_anyuser(code):
         set_verified_24h(user_id)
         await update.message.reply_text(
-            "🎉 Success! You’re verified for the next 24 hours.\n\nGo back to [@Instaa_hubb](https://t.me/instaa_hubb) and request your videos.",
+            "🎉 Success! You’re verified for the next 24 hours.\n\nGo back to  [Insta Hub](https://t.me/+te3K1qRT9i41ZWU1) and request your videos.",
             parse_mode="Markdown"
         )
     else:
