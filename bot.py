@@ -212,7 +212,7 @@ async def check_user_in_channels(bot, user_id):
 def verify_menu_kb():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("✅ Verify (Open Site)", url="https://adrinolinks.com/qHeN03lW"),
+            InlineKeyboardButton("✅ Verify (Open Site)", url="https://adrinolinks.com/ZgAh"),
             InlineKeyboardButton("ℹ️ How to Verify?", url="https://t.me/howtoverifyyourtoken")
         ],
         [InlineKeyboardButton("🚫 Remove Ads / Any Doubt", callback_data="remove_ads")]
