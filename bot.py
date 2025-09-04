@@ -68,7 +68,7 @@ def validate_limit_token(token_str: str):
 
     parts = raw.split("|")
     if len(parts) != 4:
-        return False, "❌ Invalid token format.", 0, 0, ""
+        return False, "❌ Invalid  token format.", 0, 0, ""
     ddmmyy, limit_s, days_s, hours_s = parts
     try:
         limit = int(limit_s)
