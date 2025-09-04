@@ -12,7 +12,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQuer
 
 # ----------------- CONFIG -----------------
 TOKEN = "8409312798:AAErfYLxziXCDEtZWGHj8JFStG1_Vn2uNWg"
-SOURCE_CHANNEL = -1002934836217
+SOURCE_CHANNEL = -1003008412138
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
 VERIFY_FILE = "verified_users.json"
