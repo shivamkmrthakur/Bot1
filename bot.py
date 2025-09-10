@@ -16,14 +16,53 @@ SOURCE_CHANNEL = -1003008412138
 JOIN_CHANNELS = ["@instahubackup", "@instahubackup2"]
 
 VERIFY_FILE = "verified_users.json"
-
 SECRET_KEY = b"G7r9Xm2qT5vB8zN4pL0sQwE6yH1uR3cKfVb9ZaP2"
 REDEEM_WINDOW_SECONDS = 3 * 60 * 60
-
-# ---------------- NEW: hatched short-token system ----------------
 TOKEN_USAGE_FILE = "token_usage.json"
 ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+SIG_LEN = 12
 
+VERIFIED_CACHE = {}
+
+# ---------------- VERIFY HELPERS ----------------
+def load_verified():
+    global VERIFIED_CACHE
+    if os.path.exists(VERIFY_FILE):
+        try:
+            with open(VERIFY_FILE, "r") as f:
+                VERIFIED_CACHE = json.load(f)
+        except:
+            VERIFIED_CACHE = {}
+    else:
+        VERIFIED_CACHE = {}
+
+def save_verified():
+    global VERIFIED_CACHE
+    with open(VERIFY_FILE, "w") as f:
+        json.dump(VERIFIED_CACHE, f)
+
+def set_verified_for_seconds(user_id: int, seconds: int):
+    global VERIFIED_CACHE
+    now = time.time()
+    current_expiry = VERIFIED_CACHE.get(str(user_id), 0)
+    base = max(now, current_expiry)
+    VERIFIED_CACHE[str(user_id)] = base + seconds
+    save_verified()
+
+def set_verified_24h(user_id: int):
+    set_verified_for_seconds(user_id, 24 * 60 * 60)
+
+def is_verified(user_id: int):
+    global VERIFIED_CACHE
+    key = str(user_id)
+    if key in VERIFIED_CACHE:
+        if time.time() < VERIFIED_CACHE[key]:
+            return True
+        del VERIFIED_CACHE[key]
+        save_verified()
+    return False
+
+# ---------------- Token Usage ----------------
 def load_token_usage():
     if os.path.exists(TOKEN_USAGE_FILE):
         try:
@@ -37,11 +76,8 @@ def save_token_usage(data):
     with open(TOKEN_USAGE_FILE, "w") as f:
         json.dump(data, f)
 
+# ---------------- Hatched Token System ----------------
 def simple_decode(token: str) -> str:
-    """
-    Decode token created by simple_encode in JS.
-    Uses ALPHABET mapping to convert to integer, then to bytes -> string.
-    """
     num = 0
     for ch in token:
         if ch not in ALPHABET:
@@ -50,17 +86,9 @@ def simple_decode(token: str) -> str:
     if num == 0:
         return ""
     raw = num.to_bytes((num.bit_length() + 7) // 8, "big")
-    try:
-        return raw.decode()
-    except Exception as e:
-        # if decoding fails, raise to signal invalid token
-        raise
+    return raw.decode()
 
 def validate_limit_token(token_str: str):
-    """
-    token_str: hatched short token (not base64)
-    Decodes to payload: ddmmyy|limit|days|hours
-    """
     try:
         raw = simple_decode(token_str)
     except Exception:
@@ -68,7 +96,7 @@ def validate_limit_token(token_str: str):
 
     parts = raw.split("|")
     if len(parts) != 4:
-        return False, "❌ Invalid  token format.", 0, 0, ""
+        return False, "❌ Invalid token format.", 0, 0, ""
     ddmmyy, limit_s, days_s, hours_s = parts
     try:
         limit = int(limit_s)
@@ -77,7 +105,6 @@ def validate_limit_token(token_str: str):
     except Exception:
         return False, "❌ Invalid numeric values in token.", 0, 0, ""
 
-    # token valid only for today
     today = time.strftime("%d%m%y")
     if ddmmyy != today:
         return False, "❌ Token expired or invalid date.", 0, 0, ""
@@ -87,47 +114,8 @@ def validate_limit_token(token_str: str):
         return False, "❌ Duration must be positive.", 0, 0, ""
 
     return True, "OK", grant_seconds, limit, raw
-# ---------------- END hatched system ----------------
 
-
-# ---------------- VERIFY HELPERS -----------------
-def load_verified():
-    if os.path.exists(VERIFY_FILE):
-        try:
-            with open(VERIFY_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return {}
-    return {}
-
-def save_verified(data):
-    with open(VERIFY_FILE, "w") as f:
-        json.dump(data, f)
-
-def set_verified_for_seconds(user_id: int, seconds: int):
-    verified = load_verified()
-    now = time.time()
-    current_expiry = verified.get(str(user_id), 0)
-    base = max(now, current_expiry)
-    verified[str(user_id)] = base + seconds
-    save_verified(verified)
-
-def set_verified_24h(user_id: int):
-    set_verified_for_seconds(user_id, 24 * 60 * 60)
-
-def is_verified(user_id: int):
-    verified = load_verified()
-    key = str(user_id)
-    if key in verified:
-        if time.time() < verified[key]:
-            return True
-        del verified[key]
-        save_verified(verified)
-    return False
-
-# ---------------- legacy validate ----------------
-SIG_LEN = 12
-
+# ---------------- Legacy Code Validation ----------------
 def validate_code_anyuser(code: str) -> bool:
     try:
         ts_str, sig = code.split("_", 1)
@@ -140,16 +128,9 @@ def validate_code_anyuser(code: str) -> bool:
     expected = hmac.new(SECRET_KEY, msg, hashlib.sha256).hexdigest()[:SIG_LEN]
     return hmac.compare_digest(expected, sig)
 
-# ---------------- premium token helpers ----------------
-def build_premium_token_payload(user_id: int, days: int, hours: int, ts: int) -> str:
-    return f"{ts}|{user_id}|{days}|{hours}"
-
+# ---------------- Premium Token ----------------
 def sign_payload_hex(payload: str) -> str:
     return hmac.new(SECRET_KEY, payload.encode(), hashlib.sha256).hexdigest()
-
-def encode_premium_token(payload: str, hex_sig: str) -> str:
-    combined = f"{payload}|{hex_sig}"
-    return base64.b64encode(combined.encode()).decode()
 
 def decode_premium_token(token_b64: str):
     try:
@@ -251,14 +232,11 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # Handle verification payload
     if " " in text:
         payload = text.split(" ", 1)[1].strip()
     else:
         payload = text[len("/start"):].strip()
 
-    
-    # ✅ NEW: Handle hatched multi-user tokens (short, scrambled)
     if payload.startswith("token="):
         code = payload.replace("token=", "", 1).strip()
         ok, msg, grant_seconds, limit, payload_key = validate_limit_token(code)
@@ -299,11 +277,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ That verification code is invalid or expired.")
         return
 
-       # ---------------- VIDEO ID(s) HANDLING ----------------
     if payload.isdigit() or "-" in payload or "&" in payload:
         video_ids = []
 
-        if "-" in payload:  # range format e.g. 1-4
+        if "-" in payload:
             try:
                 start_id, end_id = map(int, payload.split("-"))
                 if start_id <= end_id:
@@ -312,24 +289,22 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Invalid range format. Use like 1-4.")
                 return
 
-        elif "&" in payload:  # multiple specific IDs e.g. 1&2&5
+        elif "&" in payload:
             try:
                 video_ids = [int(x) for x in payload.split("&") if x.isdigit()]
             except Exception:
                 await update.message.reply_text("❌ Invalid multi-ID format. Use like 1&2&5.")
                 return
 
-        else:  # single id
+        else:
             video_ids = [int(payload)]
 
-        # Check join requirement
         if not await check_user_in_channels(context.bot, user_id):
             keyboard = [[InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{ch.replace('@','')}")] for ch in JOIN_CHANNELS]
             keyboard.append([InlineKeyboardButton("🔄 I Joined, Retry", callback_data="check_join")])
             await update.message.reply_text("🔒 Please join all required backup channels to continue.", reply_markup=InlineKeyboardMarkup(keyboard))
             return
 
-        # Check verification
         if is_verified(user_id):
             sent = 0
             for vid in video_ids:
@@ -338,7 +313,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         chat_id=user_id,
                         from_chat_id=SOURCE_CHANNEL,
                         message_id=vid,
-                        protect_content=True   # 🔒 Block forward + screenshot
+                        protect_content=True
                     )
                     sent += 1
                 except Exception as e:
@@ -352,7 +327,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-# ---------------- CALLBACK HANDLERS ----------------
 async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -385,7 +359,7 @@ async def join_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    username = query.from_user.first_name or "User"
+    username = update.effective_user.first_name or "User"
     await query.answer()
 
     text = (
@@ -413,7 +387,7 @@ async def remove_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    username = query.from_user.first_name or "User"
+    username = update.effective_user.first_name or "User"
     await query.answer()
 
     if is_verified(user_id):
@@ -427,7 +401,6 @@ async def close_ads_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=verify_menu_kb()
         )
 
-# ---------------- VERIFIED ----------------
 async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user_id = update.effective_user.id
@@ -451,7 +424,6 @@ async def verified_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Invalid or expired verification code.")
 
-# ---------------- REDEEM ----------------
 async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user_id = update.effective_user.id
@@ -473,6 +445,8 @@ async def redeem_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- MAIN ----------------
 def main():
+    load_verified()
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start_handler))
     app.add_handler(CommandHandler("verified", verified_handler))
